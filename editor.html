@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PDF 回転・削除・結合</title>
+    <link rel="stylesheet" href="editor.css">
+  </head>
+  <body>
+    <main class="app">
+      <header class="app-header">
+        <div class="brand">
+          <img src="icons/icon-48.png" width="44" height="44" alt="">
+          <div>
+            <h1>PDF編集</h1>
+            <p>回転・ページ削除・ファイル結合</p>
+          </div>
+        </div>
+        <div class="header-badges">
+          <span class="tab-badge">専用タブ</span>
+          <span class="local-badge" title="PDFは外部へ送信されません">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 2 5 5v6c0 4.7 2.9 9 7 11 4.1-2 7-6.3 7-11V5l-7-3Zm0 4a3 3 0 0 1 3 3v1h1v6H8v-6h1V9a3 3 0 0 1 3-3Zm0 2a1 1 0 0 0-1 1v1h2V9a1 1 0 0 0-1-1Z"/>
+            </svg>
+            ローカル処理
+          </span>
+        </div>
+      </header>
+
+      <section id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="PDFファイルを選択">
+        <input id="file-input" type="file" accept="application/pdf,.pdf" multiple hidden>
+        <div class="drop-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Zm1 3.4L18.6 9H15V5.4ZM12 12l4 4h-3v3h-2v-3H8l4-4Z"/>
+          </svg>
+        </div>
+        <strong>PDFをここにドロップ</strong>
+        <span>複数ファイルをまとめて選択できます。編集内容はこのタブを開いている間保持されます。</span>
+        <button id="choose-button" class="secondary-button" type="button">PDFを選択</button>
+      </section>
+
+      <section id="editor" class="editor" hidden>
+        <div class="workspace-layout">
+          <aside class="editor-sidebar">
+            <section class="files-section" aria-labelledby="files-title">
+              <div class="section-heading">
+                <div>
+                  <h2 id="files-title">結合するPDF</h2>
+                  <p>上から順に連結します。ドラッグまたは矢印で並べ替えできます</p>
+                </div>
+                <button id="add-files-button" class="add-button" type="button">
+                  <span aria-hidden="true">＋</span> 追加
+                </button>
+              </div>
+              <div id="file-list" class="file-list" aria-label="結合するPDFの順番"></div>
+            </section>
+
+            <div class="save-panel">
+              <button id="save-button" class="save-button" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 20h14v-2H5v2ZM19 9h-4V3H9v6H5l7 7 7-7Z"/>
+                </svg>
+                <span id="save-label">編集後のPDFを保存</span>
+              </button>
+              <p class="privacy-note">元ファイルは変更されません。処理はこの端末内だけで行われます。</p>
+            </div>
+          </aside>
+
+          <section class="pages-section" aria-labelledby="pages-title">
+            <div class="section-heading pages-heading">
+              <div>
+                <h2 id="pages-title">ページ編集</h2>
+                <p>クリックで複数選択、上部のグリップをドラッグしてページ順を変更できます</p>
+              </div>
+              <span id="page-count" class="page-count"></span>
+            </div>
+
+            <div class="selection-toolbar">
+              <span id="selected-count">選択なし</span>
+              <div class="selection-actions">
+                <button id="select-all-button" class="toolbar-button" type="button">すべて選択</button>
+                <button id="clear-selection-button" class="toolbar-button" type="button" disabled>解除</button>
+                <button id="undo-delete-button" class="toolbar-button undo" type="button" hidden>削除を戻す</button>
+                <button id="delete-selected-button" class="delete-button" type="button" disabled>
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M7 21a2 2 0 0 1-2-2V7h14v12a2 2 0 0 1-2 2H7ZM9 17h2V10H9v7Zm4 0h2V10h-2v7Zm3.5-13-1-1h-7l-1 1H4v2h16V4h-3.5Z"/>
+                  </svg>
+                  選択ページを削除
+                </button>
+              </div>
+            </div>
+
+            <div id="page-grid" class="page-grid" aria-label="PDFのページ一覧"></div>
+          </section>
+        </div>
+      </section>
+
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+    </main>
+
+    <script src="vendor/pdf-lib.min.js"></script>
+    <script src="pdf-core.js"></script>
+    <script type="module" src="editor.js"></script>
+  </body>
+</html>
