@@ -27,8 +27,12 @@ const elements = {
   pageGrid: document.querySelector("#page-grid"),
   saveButton: document.querySelector("#save-button"),
   saveLabel: document.querySelector("#save-label"),
-  status: document.querySelector("#status")
+  status: document.querySelector("#status"),
+  appVersion: document.querySelector("#app-version")
 };
+
+const manifest = chrome.runtime.getManifest();
+elements.appVersion.textContent = `v${manifest.version}`;
 
 const state = {
   items: [],
@@ -199,8 +203,8 @@ function renderFileList() {
   });
   elements.fileList.replaceChildren(fragment);
   document.title = state.items.length > 0
-    ? `PDF編集 - ${state.items.length}ファイル`
-    : "PDF 回転・削除・結合";
+    ? `PDF Tools - ${state.items.length}ファイル`
+    : "PDF Tools";
   elements.saveLabel.textContent = state.items.length > 1
     ? `${state.items.length}個のPDFを結合して保存`
     : "編集後のPDFを保存";
