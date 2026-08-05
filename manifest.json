@@ -7,7 +7,7 @@
     "downloads"
   ],
   "action": {
-    "default_title": "PDF編集を専用タブで開く"
+    "default_title": "PDF Toolsを専用タブで開く"
   },
   "background": {
     "service_worker": "background.js"
