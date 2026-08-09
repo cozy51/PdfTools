@@ -31,7 +31,7 @@ const elements = {
   appVersion: document.querySelector("#app-version")
 };
 
-const APP_VERSION = "1.4.2";
+const APP_VERSION = "1.5.0";
 elements.appVersion.textContent = `v${APP_VERSION}`;
 
 const state = {
@@ -1021,6 +1021,21 @@ document.addEventListener("drop", (event) => {
 });
 
 globalThis.addEventListener("blur", resetExternalFileDrag);
+
+function isLocalHost() {
+  return ["localhost", "127.0.0.1", "[::1]", "::1"].includes(location.hostname);
+}
+
+// 配信された状態でだけオフライン対応を有効にする。ローカルサーバーで開いている
+// ときはファイルがすでに手元にあるため利点がなく、編集中のファイルが
+// キャッシュから返って古い表示になるのを避けるために登録しない。
+if ("serviceWorker" in navigator && !isLocalHost()) {
+  globalThis.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {
+      // オフライン対応が使えなくても、アプリ本体の動作には影響しない。
+    });
+  });
+}
 
 // index.html のインラインスクリプトが、起動できたかどうかを判定するために参照する。
 globalThis.pdfToolsReady = true;
