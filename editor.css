@@ -156,6 +156,12 @@ h1 {
   transform: scale(1.01);
 }
 
+.file-dragging .drop-zone {
+  border-color: #5857db;
+  background: #fafaff;
+  box-shadow: 0 16px 44px rgba(67, 65, 201, 0.18);
+}
+
 .drop-icon {
   display: grid;
   width: 82px;
