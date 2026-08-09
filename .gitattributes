@@ -1,0 +1,2 @@
+# Windowsのバッチファイルは CRLF でないと解釈が不安定になるため固定する。
+*.cmd text eol=crlf

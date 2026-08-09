@@ -127,6 +127,68 @@ h1 {
   fill: currentColor;
 }
 
+.boot-notice {
+  width: min(820px, 100%);
+  margin: 50px auto 0;
+  padding: 34px 38px 30px;
+  border: 1px solid #f0c9a6;
+  border-radius: 18px;
+  background: #fffaf3;
+  box-shadow: 0 12px 32px rgba(38, 48, 94, 0.06);
+}
+
+.boot-notice-icon {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  margin-bottom: 18px;
+  place-items: center;
+  border-radius: 16px;
+  color: #b76b12;
+  background: #fdeacf;
+}
+
+.boot-notice-icon svg {
+  width: 30px;
+  height: 30px;
+  fill: currentColor;
+}
+
+.boot-notice h2 {
+  margin: 0 0 10px;
+  font-size: 20px;
+}
+
+.boot-notice p {
+  margin: 0;
+  color: #5d6b7d;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.boot-notice-steps {
+  margin: 18px 0 0;
+  padding-left: 22px;
+  color: #16263d;
+  font-size: 15px;
+  line-height: 2;
+}
+
+.boot-notice-alt {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #f2ded0;
+  font-size: 13px;
+}
+
+.boot-notice code {
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: #f3ece3;
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 0.95em;
+}
+
 .drop-zone {
   display: flex;
   width: min(820px, 100%);

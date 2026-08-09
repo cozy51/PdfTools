@@ -31,6 +31,28 @@
         </div>
       </header>
 
+      <section id="boot-notice" class="boot-notice" role="alert" hidden>
+        <div class="boot-notice-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 2 1 21h22L12 2Zm0 5 7.5 12h-15L12 7Zm-1 4v4h2v-4h-2Zm0 5v2h2v-2h-2Z"/>
+          </svg>
+        </div>
+        <h2 id="boot-notice-title">このままでは操作できません</h2>
+        <p id="boot-notice-message">
+          index.html をファイルとして直接開いているため、ブラウザーの制限（CORS）で
+          このアプリのスクリプトが読み込めず、ドロップとボタンが反応しません。
+          ローカルサーバー経由で開いてください。
+        </p>
+        <ol class="boot-notice-steps">
+          <li>このフォルダーにある <code>start.cmd</code> をダブルクリックします。</li>
+          <li>ブラウザーが <code>http://127.0.0.1:8000/</code> で自動的に開きます。</li>
+        </ol>
+        <p class="boot-notice-alt">
+          Windows以外や手動で起動する場合は、このフォルダーで
+          <code>python3 serve.py</code> を実行してください。
+        </p>
+      </section>
+
       <section id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="PDFファイルを選択">
         <input id="file-input" type="file" accept="application/pdf,.pdf" multiple hidden>
         <div class="drop-icon" aria-hidden="true">
@@ -102,6 +124,54 @@
       <div id="status" class="status" role="status" aria-live="polite"></div>
     </main>
 
+    <!--
+      このスクリプトだけは、他のスクリプトが読み込めない状況でも動く必要があるため
+      インラインの通常スクリプトとして書いている。file:// で直接開いた場合、
+      ブラウザーは type="module" のスクリプトを CORS で拒否するため、
+      アプリ本体は起動できず画面が無反応になる。その状況を利用者へ知らせる。
+    -->
+    <script>
+      (function () {
+        function showNotice(title, message) {
+          var notice = document.querySelector("#boot-notice");
+          if (!notice || window.pdfToolsReady) {
+            return;
+          }
+          if (title) {
+            notice.querySelector("#boot-notice-title").textContent = title;
+          }
+          if (message) {
+            notice.querySelector("#boot-notice-message").textContent = message;
+          }
+          var dropZone = document.querySelector("#drop-zone");
+          if (dropZone) {
+            dropZone.hidden = true;
+          }
+          notice.hidden = false;
+        }
+
+        if (location.protocol === "file:") {
+          showNotice();
+          return;
+        }
+
+        window.addEventListener(
+          "error",
+          function (event) {
+            var target = event.target;
+            if (!target || target.tagName !== "SCRIPT" || target === document.currentScript) {
+              return;
+            }
+            showNotice(
+              "アプリを読み込めませんでした",
+              "必要なスクリプトを読み込めませんでした。ファイルが揃っているか確認し、" +
+                "ローカルサーバー経由で開き直してください。"
+            );
+          },
+          true
+        );
+      })();
+    </script>
     <script src="vendor/pdf-lib.min.js"></script>
     <script src="pdf-core.js"></script>
     <script type="module" src="editor.js"></script>
