@@ -31,8 +31,8 @@ const elements = {
   appVersion: document.querySelector("#app-version")
 };
 
-const manifest = chrome.runtime.getManifest();
-elements.appVersion.textContent = `v${manifest.version}`;
+const APP_VERSION = "1.4.1";
+elements.appVersion.textContent = `v${APP_VERSION}`;
 
 const state = {
   items: [],
@@ -46,6 +46,18 @@ const state = {
   draggedItemId: null,
   draggedPageKey: null
 };
+
+let externalFileDragDepth = 0;
+
+function isExternalFileDrag(event) {
+  return Array.from(event.dataTransfer?.types || []).includes("Files");
+}
+
+function resetExternalFileDrag() {
+  externalFileDragDepth = 0;
+  elements.dropZone.classList.remove("dragging");
+  document.documentElement.classList.remove("file-dragging");
+}
 
 function pageKey(itemId, sourceIndex) {
   return `${itemId}:${sourceIndex}`;
@@ -747,8 +759,8 @@ async function buildOutputPdf() {
       sourceIndex: pageModel.sourceIndex
     }))
   );
-  output.setProducer("PDF Rotate, Delete & Merge Edge Extension");
-  output.setCreator("PDF Rotate, Delete & Merge Edge Extension");
+  output.setProducer("PDF Tools Web App");
+  output.setCreator("PDF Tools Web App");
   return output;
 }
 
@@ -775,18 +787,14 @@ async function savePdf() {
       ? core.createMergedOutputName(state.items[0].file.name)
       : core.createEditedOutputName(state.items[0].file.name);
 
-    if (globalThis.chrome && chrome.downloads && chrome.downloads.download) {
-      await chrome.downloads.download({
-        url: objectUrl,
-        filename,
-        saveAs: true
-      });
-    } else {
-      const link = document.createElement("a");
-      link.href = objectUrl;
-      link.download = filename;
-      link.click();
-    }
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = filename;
+    link.hidden = true;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    globalThis.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 
     setStatus(`「${filename}」を保存しました。`);
   } catch (error) {
@@ -951,18 +959,48 @@ elements.pageGrid.addEventListener("keydown", (event) => {
   }
 });
 
-["dragenter", "dragover"].forEach((eventName) => {
-  elements.dropZone.addEventListener(eventName, (event) => {
-    event.preventDefault();
-    elements.dropZone.classList.add("dragging");
-  });
+// Listen on the whole document rather than only on the drop-zone. Without a
+// document-level dragover handler, some browsers navigate to the PDF instead
+// of dispatching a usable drop when the pointer crosses a child element.
+document.addEventListener("dragenter", (event) => {
+  if (!isExternalFileDrag(event)) {
+    return;
+  }
+  event.preventDefault();
+  externalFileDragDepth += 1;
+  elements.dropZone.classList.add("dragging");
+  document.documentElement.classList.add("file-dragging");
 });
-["dragleave", "drop"].forEach((eventName) => {
-  elements.dropZone.addEventListener(eventName, (event) => {
-    event.preventDefault();
-    elements.dropZone.classList.remove("dragging");
-  });
+
+document.addEventListener("dragover", (event) => {
+  if (!isExternalFileDrag(event)) {
+    return;
+  }
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "copy";
 });
-elements.dropZone.addEventListener("drop", (event) => {
-  loadFiles(event.dataTransfer.files);
+
+document.addEventListener("dragleave", (event) => {
+  if (!isExternalFileDrag(event)) {
+    return;
+  }
+  externalFileDragDepth = Math.max(0, externalFileDragDepth - 1);
+  if (externalFileDragDepth === 0) {
+    resetExternalFileDrag();
+  }
 });
+
+document.addEventListener("drop", (event) => {
+  if (!isExternalFileDrag(event)) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  const files = event.dataTransfer?.files;
+  resetExternalFileDrag();
+  if (files?.length) {
+    void loadFiles(files);
+  }
+});
+
+globalThis.addEventListener("blur", resetExternalFileDrag);

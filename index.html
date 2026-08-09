@@ -3,7 +3,11 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="PDFの回転・ページ削除・並べ替え・結合を、ブラウザー内だけで行える無料Webアプリです。">
+    <meta name="theme-color" content="#f5f7fb">
     <title>PDF 回転・削除・結合</title>
+    <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+    <link rel="manifest" href="app.webmanifest">
     <link rel="stylesheet" href="editor.css">
   </head>
   <body>
@@ -12,12 +16,12 @@
         <div class="brand">
           <img src="icons/icon-48.png" width="44" height="44" alt="">
           <div>
-            <h1><span>PDF Tools</span><span id="app-version" class="app-version">v1.4.0</span></h1>
+            <h1><span>PDF Tools</span><span id="app-version" class="app-version">v1.4.1</span></h1>
             <p>回転・ページ削除・ファイル結合</p>
           </div>
         </div>
         <div class="header-badges">
-          <span class="tab-badge">専用タブ</span>
+          <span class="tab-badge">Webアプリ</span>
           <span class="local-badge" title="PDFは外部へ送信されません">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 2 5 5v6c0 4.7 2.9 9 7 11 4.1-2 7-6.3 7-11V5l-7-3Zm0 4a3 3 0 0 1 3 3v1h1v6H8v-6h1V9a3 3 0 0 1 3-3Zm0 2a1 1 0 0 0-1 1v1h2V9a1 1 0 0 0-1-1Z"/>
@@ -35,7 +39,7 @@
           </svg>
         </div>
         <strong>PDFをここにドロップ</strong>
-        <span>複数ファイルをまとめて選択できます。編集内容はこのタブを開いている間保持されます。</span>
+        <span>複数ファイルをまとめて選択できます。PDFはアップロードされず、このブラウザー内だけで処理されます。</span>
         <button id="choose-button" class="secondary-button" type="button">PDFを選択</button>
       </section>
 
