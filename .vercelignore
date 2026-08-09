@@ -1,0 +1,5 @@
+# ローカル起動用と開発用のファイルは配信しない。
+start.cmd
+serve.py
+tests/
+.gitattributes
