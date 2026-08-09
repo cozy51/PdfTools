@@ -31,7 +31,7 @@ const elements = {
   appVersion: document.querySelector("#app-version")
 };
 
-const APP_VERSION = "1.4.1";
+const APP_VERSION = "1.4.2";
 elements.appVersion.textContent = `v${APP_VERSION}`;
 
 const state = {
@@ -49,8 +49,21 @@ const state = {
 
 let externalFileDragDepth = 0;
 
-function isExternalFileDrag(event) {
-  return Array.from(event.dataTransfer?.types || []).includes("Files");
+function isInternalReorderDrag() {
+  return Boolean(state.draggedItemId || state.draggedPageKey);
+}
+
+function getDraggedFiles(dataTransfer) {
+  if (!dataTransfer) {
+    return [];
+  }
+  if (dataTransfer.files?.length > 0) {
+    return Array.from(dataTransfer.files);
+  }
+  return Array.from(dataTransfer.items || [])
+    .filter((item) => item.kind === "file")
+    .map((item) => item.getAsFile())
+    .filter(Boolean);
 }
 
 function resetExternalFileDrag() {
@@ -963,7 +976,7 @@ elements.pageGrid.addEventListener("keydown", (event) => {
 // document-level dragover handler, some browsers navigate to the PDF instead
 // of dispatching a usable drop when the pointer crosses a child element.
 document.addEventListener("dragenter", (event) => {
-  if (!isExternalFileDrag(event)) {
+  if (isInternalReorderDrag()) {
     return;
   }
   event.preventDefault();
@@ -973,15 +986,20 @@ document.addEventListener("dragenter", (event) => {
 });
 
 document.addEventListener("dragover", (event) => {
-  if (!isExternalFileDrag(event)) {
+  if (isInternalReorderDrag()) {
     return;
   }
+  // Some browsers deliberately hide DataTransfer types until the drop event.
+  // Cancelling all non-internal drags keeps their default PDF navigation from
+  // winning even in that case.
   event.preventDefault();
-  event.dataTransfer.dropEffect = "copy";
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = "copy";
+  }
 });
 
 document.addEventListener("dragleave", (event) => {
-  if (!isExternalFileDrag(event)) {
+  if (isInternalReorderDrag()) {
     return;
   }
   externalFileDragDepth = Math.max(0, externalFileDragDepth - 1);
@@ -991,16 +1009,15 @@ document.addEventListener("dragleave", (event) => {
 });
 
 document.addEventListener("drop", (event) => {
-  if (!isExternalFileDrag(event)) {
+  const dataTransfer = event.dataTransfer;
+  const files = getDraggedFiles(dataTransfer);
+  if (isInternalReorderDrag() || files.length === 0) {
     return;
   }
   event.preventDefault();
   event.stopPropagation();
-  const files = event.dataTransfer?.files;
   resetExternalFileDrag();
-  if (files?.length) {
-    void loadFiles(files);
-  }
+  void loadFiles(files);
 });
 
 globalThis.addEventListener("blur", resetExternalFileDrag);
