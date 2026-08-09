@@ -31,8 +31,8 @@ const elements = {
   appVersion: document.querySelector("#app-version")
 };
 
-const manifest = chrome.runtime.getManifest();
-elements.appVersion.textContent = `v${manifest.version}`;
+const APP_VERSION = "1.4.0";
+elements.appVersion.textContent = `v${APP_VERSION}`;
 
 const state = {
   items: [],
@@ -747,8 +747,8 @@ async function buildOutputPdf() {
       sourceIndex: pageModel.sourceIndex
     }))
   );
-  output.setProducer("PDF Rotate, Delete & Merge Edge Extension");
-  output.setCreator("PDF Rotate, Delete & Merge Edge Extension");
+  output.setProducer("PDF Tools Web App");
+  output.setCreator("PDF Tools Web App");
   return output;
 }
 
@@ -775,18 +775,14 @@ async function savePdf() {
       ? core.createMergedOutputName(state.items[0].file.name)
       : core.createEditedOutputName(state.items[0].file.name);
 
-    if (globalThis.chrome && chrome.downloads && chrome.downloads.download) {
-      await chrome.downloads.download({
-        url: objectUrl,
-        filename,
-        saveAs: true
-      });
-    } else {
-      const link = document.createElement("a");
-      link.href = objectUrl;
-      link.download = filename;
-      link.click();
-    }
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = filename;
+    link.hidden = true;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    globalThis.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 
     setStatus(`「${filename}」を保存しました。`);
   } catch (error) {
