@@ -31,7 +31,7 @@ const elements = {
   appVersion: document.querySelector("#app-version")
 };
 
-const APP_VERSION = "1.4.0";
+const APP_VERSION = "1.4.1";
 elements.appVersion.textContent = `v${APP_VERSION}`;
 
 const state = {
@@ -46,6 +46,18 @@ const state = {
   draggedItemId: null,
   draggedPageKey: null
 };
+
+let externalFileDragDepth = 0;
+
+function isExternalFileDrag(event) {
+  return Array.from(event.dataTransfer?.types || []).includes("Files");
+}
+
+function resetExternalFileDrag() {
+  externalFileDragDepth = 0;
+  elements.dropZone.classList.remove("dragging");
+  document.documentElement.classList.remove("file-dragging");
+}
 
 function pageKey(itemId, sourceIndex) {
   return `${itemId}:${sourceIndex}`;
@@ -947,18 +959,48 @@ elements.pageGrid.addEventListener("keydown", (event) => {
   }
 });
 
-["dragenter", "dragover"].forEach((eventName) => {
-  elements.dropZone.addEventListener(eventName, (event) => {
-    event.preventDefault();
-    elements.dropZone.classList.add("dragging");
-  });
+// Listen on the whole document rather than only on the drop-zone. Without a
+// document-level dragover handler, some browsers navigate to the PDF instead
+// of dispatching a usable drop when the pointer crosses a child element.
+document.addEventListener("dragenter", (event) => {
+  if (!isExternalFileDrag(event)) {
+    return;
+  }
+  event.preventDefault();
+  externalFileDragDepth += 1;
+  elements.dropZone.classList.add("dragging");
+  document.documentElement.classList.add("file-dragging");
 });
-["dragleave", "drop"].forEach((eventName) => {
-  elements.dropZone.addEventListener(eventName, (event) => {
-    event.preventDefault();
-    elements.dropZone.classList.remove("dragging");
-  });
+
+document.addEventListener("dragover", (event) => {
+  if (!isExternalFileDrag(event)) {
+    return;
+  }
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "copy";
 });
-elements.dropZone.addEventListener("drop", (event) => {
-  loadFiles(event.dataTransfer.files);
+
+document.addEventListener("dragleave", (event) => {
+  if (!isExternalFileDrag(event)) {
+    return;
+  }
+  externalFileDragDepth = Math.max(0, externalFileDragDepth - 1);
+  if (externalFileDragDepth === 0) {
+    resetExternalFileDrag();
+  }
 });
+
+document.addEventListener("drop", (event) => {
+  if (!isExternalFileDrag(event)) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  const files = event.dataTransfer?.files;
+  resetExternalFileDrag();
+  if (files?.length) {
+    void loadFiles(files);
+  }
+});
+
+globalThis.addEventListener("blur", resetExternalFileDrag);
