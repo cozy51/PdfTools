@@ -1,6 +1,6 @@
 # Third-party notices
 
-This extension includes [pdf-lib](https://github.com/Hopding/pdf-lib), distributed under the MIT License.
+This web application includes [pdf-lib](https://github.com/Hopding/pdf-lib), distributed under the MIT License.
 
 Copyright (c) 2019 Andrew Dillon
 
@@ -24,6 +24,6 @@ SOFTWARE.
 
 ---
 
-This extension also includes [PDF.js](https://github.com/mozilla/pdf.js),
+This web application also includes [PDF.js](https://github.com/mozilla/pdf.js),
 Copyright 2012 Mozilla Foundation, distributed under the Apache License 2.0.
 The complete license text is included at `vendor/pdfjs-LICENSE`.

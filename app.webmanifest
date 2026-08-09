@@ -1,0 +1,18 @@
+{
+  "name": "PDF 回転・削除・結合",
+  "short_name": "PDF Tools",
+  "description": "PDFの回転・ページ削除・並べ替え・結合をブラウザー内で行います。",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f5f7fb",
+  "theme_color": "#f5f7fb",
+  "lang": "ja",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

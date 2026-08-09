@@ -87,7 +87,7 @@ async function run() {
     ]
   );
 
-  const outputPath = path.join(os.tmpdir(), "pdf-rotate-extension-test.pdf");
+  const outputPath = path.join(os.tmpdir(), "pdf-tools-web-app-test.pdf");
   fs.writeFileSync(outputPath, await reopened.save());
   assert.ok(fs.statSync(outputPath).size > 0);
   fs.unlinkSync(outputPath);
