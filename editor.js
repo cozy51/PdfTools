@@ -1021,3 +1021,6 @@ document.addEventListener("drop", (event) => {
 });
 
 globalThis.addEventListener("blur", resetExternalFileDrag);
+
+// index.html のインラインスクリプトが、起動できたかどうかを判定するために参照する。
+globalThis.pdfToolsReady = true;
