@@ -139,15 +139,35 @@
               <button class="tool-button" type="button" data-tool="select" aria-pressed="false">選択</button>
               <button class="tool-button" type="button" data-tool="text" aria-pressed="false">テキスト</button>
             </div>
-            <div class="tool-group" role="group" aria-label="ペン">
-              <span class="tool-group-label">ペン</span>
-              <button class="tool-button" type="button" data-tool="pen" aria-pressed="true" aria-label="ペンでなぞって描く">フリー</button>
-              <button class="tool-button" type="button" data-tool="line" aria-pressed="false" aria-label="ペンで直線を描く">直線</button>
+            <div class="tool-set" role="group" aria-labelledby="tool-set-pen">
+              <span class="tool-set-label" id="tool-set-pen">ペン</span>
+              <button class="tool-button" type="button" data-tool="pen" aria-pressed="true" aria-label="ペンでなぞって描く">
+                <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path class="stroke-sample" d="M3 14q3-6 6 0t6 0 6 0"/>
+                </svg>
+                フリー
+              </button>
+              <button class="tool-button" type="button" data-tool="line" aria-pressed="false" aria-label="ペンで直線を描く">
+                <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path class="stroke-sample" d="M3 18 21 6"/>
+                </svg>
+                直線
+              </button>
             </div>
-            <div class="tool-group marker-group" role="group" aria-label="蛍光ペン">
-              <span class="tool-group-label">蛍光ペン</span>
-              <button class="tool-button" type="button" data-tool="marker" aria-pressed="false" aria-label="蛍光ペンでなぞって塗る">フリー</button>
-              <button class="tool-button" type="button" data-tool="marker-line" aria-pressed="false" aria-label="蛍光ペンで直線を引く">直線</button>
+            <div class="tool-set marker-set" role="group" aria-labelledby="tool-set-marker">
+              <span class="tool-set-label" id="tool-set-marker">蛍光ペン</span>
+              <button class="tool-button" type="button" data-tool="marker" aria-pressed="false" aria-label="蛍光ペンでなぞって塗る">
+                <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path class="stroke-sample marker-sample" d="M3 13q3-4 6 0t6 0 6 0"/>
+                </svg>
+                フリー
+              </button>
+              <button class="tool-button" type="button" data-tool="marker-line" aria-pressed="false" aria-label="蛍光ペンで直線を引く">
+                <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path class="stroke-sample marker-sample" d="M3 17 21 7"/>
+                </svg>
+                直線
+              </button>
             </div>
             <label class="tool-field">
               <span>色</span>

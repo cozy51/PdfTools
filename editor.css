@@ -1072,7 +1072,8 @@ h1 {
 
 .page-editor-toolbar {
   display: flex;
-  padding: 10px 18px;
+  /* 枠線に重ねたグループ見出しがはみ出す分、上を広めにとる。 */
+  padding: 15px 18px 10px;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px 18px;
@@ -1087,8 +1088,11 @@ h1 {
 }
 
 .tool-button {
+  display: inline-flex;
   height: 34px;
   padding: 0 12px;
+  align-items: center;
+  gap: 7px;
   border: 1px solid #d9ddea;
   border-radius: 8px;
   color: #33405a;
@@ -1288,23 +1292,68 @@ h1 {
   left: 24px;
 }
 
-.tool-group-label {
-  margin-right: 2px;
-  color: #6c7a8e;
-  font-size: 11px;
+/* どのボタンがどちらの道具のものか一目で分かるよう、枠で囲んで
+   見出しを枠線の上に重ねる。小さな文字を横に置くだけでは、隣の
+   グループのボタンと見分けがつきにくい。 */
+.tool-set {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px;
+  border: 1px solid #d3d9e6;
+  border-radius: 11px;
+  background: #fbfcfe;
+}
+
+.tool-set-label {
+  position: absolute;
+  top: -8px;
+  left: 10px;
+  padding: 0 6px;
+  color: #33405a;
+  /* ツールバーと同じ色を敷いて、枠線を途切れさせる。 */
+  background: #fff;
+  font-size: 12px;
   font-weight: 800;
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 
-.tool-group + .tool-group {
-  padding-left: 14px;
-  border-left: 1px solid #e4e8f0;
+/* 蛍光ペン側は色でも区別できるようにする。 */
+.marker-set {
+  border-color: #e8ca6a;
+  background: #fffcf0;
 }
 
-.marker-group .tool-button.active {
+.marker-set .tool-set-label {
+  color: #7a5c00;
+}
+
+.marker-set .tool-button.active {
   border-color: #b08900;
   color: #4a3a00;
   background: #ffe14d;
+}
+
+/* 何が描かれるかを、そのまま形で見せる。 */
+.tool-icon {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+}
+
+.stroke-sample {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.marker-sample {
+  stroke-width: 6;
+  stroke-linecap: butt;
+  opacity: 0.5;
 }
 
 .zoom-hint {
