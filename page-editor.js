@@ -370,8 +370,10 @@ export function createPageEditor(options) {
   function computeBaseScale() {
     const size = displaySize();
     const available = dom.stage.getBoundingClientRect();
-    const width = Math.max(160, available.width - 48);
-    const height = Math.max(160, available.height - 48);
+    // 枠の内側の余白ぶんを引く。ぴったりに合わせるとスクロールバーが
+    // 出たり消えたりするため、少しだけ余らせておく。
+    const width = Math.max(160, available.width - 32);
+    const height = Math.max(160, available.height - 32);
     if (size.width === 0 || size.height === 0) {
       return 1;
     }
@@ -999,14 +1001,63 @@ export function createPageEditor(options) {
     }
   }
 
+  function clampZoom(zoom) {
+    return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+  }
+
+  function currentZoom() {
+    return editor.fitZoom ? 1 : editor.zoom;
+  }
+
   function setZoom(zoom) {
     editor.fitZoom = false;
-    editor.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+    editor.zoom = clampZoom(zoom);
     void renderPage();
   }
 
   function zoomStep(factor) {
-    setZoom((editor.fitZoom ? 1 : editor.zoom) * factor);
+    setZoom(currentZoom() * factor);
+  }
+
+  // 指した位置を動かさずに拡大縮小する。画面の中央を基準にすると、
+  // 見ていた場所が枠の外へ逃げてしまう。
+  function zoomAtPoint(zoom, clientX, clientY) {
+    const before = dom.surface.getBoundingClientRect();
+    const ratioX = before.width > 0 ? (clientX - before.left) / before.width : 0.5;
+    const ratioY = before.height > 0 ? (clientY - before.top) / before.height : 0.5;
+
+    editor.fitZoom = false;
+    editor.zoom = clampZoom(zoom);
+    const rendering = renderPage();
+
+    // renderPage はページの内容を描く前に大きさを決めるため、この時点で
+    // 新しい配置が分かる。同じ割合の位置がカーソルの下へ来るよう寄せる。
+    const after = dom.surface.getBoundingClientRect();
+    dom.stage.scrollLeft += after.left + after.width * ratioX - clientX;
+    dom.stage.scrollTop += after.top + after.height * ratioY - clientY;
+    return rendering;
+  }
+
+  // ホイールの刻みは環境によって単位が違うため、画素数へそろえてから使う。
+  function wheelDelta(event) {
+    if (event.deltaMode === 1) {
+      return event.deltaY * 16;
+    }
+    if (event.deltaMode === 2) {
+      return event.deltaY * 400;
+    }
+    return event.deltaY;
+  }
+
+  function onStageWheel(event) {
+    // Windowsとの合わせでCtrl、macOSではCommandでも同じ操作にする。
+    if (!event.ctrlKey && !event.metaKey) {
+      return;
+    }
+    // 止めないとブラウザー自身の拡大縮小が働いてしまう。
+    event.preventDefault();
+    const factor = Math.exp(-wheelDelta(event) * 0.0015);
+    void zoomAtPoint(currentZoom() * factor, event.clientX, event.clientY);
   }
 
   dom.close.addEventListener("click", close);
@@ -1066,6 +1117,8 @@ export function createPageEditor(options) {
   dom.overlay.addEventListener("pointercancel", onPointerUp);
   dom.overlay.addEventListener("dblclick", onDoubleClick);
 
+  // 既定の拡大縮小を止めるため、受け流さない指定で登録する。
+  dom.stage.addEventListener("wheel", onStageWheel, { passive: false });
   dom.stage.addEventListener("pointerdown", onStagePointerDown);
   dom.stage.addEventListener("pointermove", onStagePointerMove);
   dom.stage.addEventListener("pointerup", endPanning);

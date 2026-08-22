@@ -979,7 +979,8 @@ h1 {
   position: fixed;
   z-index: 20;
   display: flex;
-  padding: 20px;
+  /* ページを大きく見せたいので、周りの余白は縁取り程度にとどめる。 */
+  padding: 8px;
   align-items: center;
   justify-content: center;
   background: rgba(17, 24, 43, 0.62);
@@ -988,7 +989,8 @@ h1 {
 
 .page-editor-panel {
   display: flex;
-  width: min(1280px, 100%);
+  /* 幅を制限すると、広い画面では左右に使えない帯が残ってしまう。 */
+  width: 100%;
   height: 100%;
   flex-direction: column;
   overflow: hidden;
@@ -1147,7 +1149,7 @@ h1 {
 .page-editor-stage {
   display: flex;
   flex: 1 1 auto;
-  padding: 20px;
+  padding: 12px;
   overflow: auto;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.6), rgba(233, 237, 244, 0.6)),
