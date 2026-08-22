@@ -17,6 +17,14 @@ async function run() {
   assert.equal(core.createOutputName(""), "document_rotated.pdf");
   assert.equal(core.createEditedOutputName("資料.PDF"), "資料_edited.pdf");
   assert.equal(core.createMergedOutputName("資料.PDF"), "資料_merged.pdf");
+  assert.equal(
+    core.createTimestampedOutputName(new Date(2026, 0, 2, 3, 4)),
+    "PdfTools_260102-0304.pdf"
+  );
+  assert.throws(
+    () => core.createTimestampedOutputName(new Date("invalid")),
+    /valid date/
+  );
 
   const source = await PDFLib.PDFDocument.create();
   source.addPage([300, 500]);

@@ -981,9 +981,7 @@ async function savePdf() {
     const bytes = await output.save();
     const blob = new Blob([bytes], { type: "application/pdf" });
     objectUrl = URL.createObjectURL(blob);
-    const filename = state.items.length > 1
-      ? core.createMergedOutputName(state.items[0].file.name)
-      : core.createEditedOutputName(state.items[0].file.name);
+    const filename = core.createTimestampedOutputName();
 
     const link = document.createElement("a");
     link.href = objectUrl;

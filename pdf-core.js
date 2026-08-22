@@ -68,6 +68,19 @@
     return `${baseName}_merged.pdf`;
   }
 
+  function createTimestampedOutputName(date = new Date()) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+      throw new TypeError("A valid date is required.");
+    }
+    const pad = (value) => String(value).padStart(2, "0");
+    const year = pad(date.getFullYear() % 100);
+    const month = pad(date.getMonth() + 1);
+    const day = pad(date.getDate());
+    const hours = pad(date.getHours());
+    const minutes = pad(date.getMinutes());
+    return `PdfTools_${year}${month}${day}-${hours}${minutes}.pdf`;
+  }
+
   async function mergePdfPages(items) {
     if (!Array.isArray(items)) {
       throw new TypeError("PDF items are required.");
@@ -437,6 +450,7 @@
     createOutputName,
     createEditedOutputName,
     createMergedOutputName,
+    createTimestampedOutputName,
     mergePdfPages,
     mergeOrderedPdfPages,
     getPageBox,
