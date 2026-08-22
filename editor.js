@@ -865,6 +865,52 @@ function rotatePage(itemId, sourceIndex, delta) {
   );
 }
 
+// 矢印付きのテキストに添える枠と矢印を組み立てる。画面で見えているものと
+// 同じ形になるよう、計算は画面側と同じ関数を使う。
+function buildCalloutItems(annotation, boxWidth, boxHeight) {
+  if (!annotation.arrow) {
+    return [];
+  }
+  const toPage = (point) => core.toPagePoint(annotation, point.x, point.y);
+  const items = [
+    {
+      type: "stroke",
+      points: [
+        { x: 0, y: 0 },
+        { x: boxWidth, y: 0 },
+        { x: boxWidth, y: boxHeight },
+        { x: 0, y: boxHeight },
+        { x: 0, y: 0 }
+      ].map(toPage),
+      thickness: core.getCalloutLineWidth(annotation.fontSize),
+      color: annotation.color
+    }
+  ];
+
+  const geometry = core.getArrowGeometry(
+    annotation.arrow,
+    boxWidth,
+    boxHeight,
+    annotation.fontSize
+  );
+  if (geometry) {
+    items.push(
+      {
+        type: "stroke",
+        points: [geometry.tail, geometry.lineEnd].map(toPage),
+        thickness: geometry.thickness,
+        color: annotation.color
+      },
+      {
+        type: "polygon",
+        points: geometry.head.map(toPage),
+        color: annotation.color
+      }
+    );
+  }
+  return items;
+}
+
 // テキストは画像として重ねる。pdf-lib の標準フォントは日本語を含む多くの
 // 文字を扱えないため、画面での見た目をそのまま持ち込める方法を選んでいる。
 async function applyAnnotationsToOutput(output) {
@@ -882,6 +928,11 @@ async function applyAnnotationsToOutput(output) {
     for (const annotation of annotations) {
       if (annotation.type === "text") {
         const rendered = renderTextImage(annotation);
+        // 枠と矢印は、テキストの枠を基準にした局所座標で持っている。
+        // ページ座標へ移してから、線と塗りとして書き込む。
+        drawItems.push(
+          ...buildCalloutItems(annotation, rendered.width, rendered.height)
+        );
         drawItems.push({
           type: "image",
           image: await output.embedPng(rendered.dataUrl),

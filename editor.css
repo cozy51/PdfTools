@@ -1192,7 +1192,8 @@ h1 {
 .page-editor-stage.panning .page-editor-surface,
 .page-editor-stage.panning .annotation-canvas.interactive,
 .page-editor-stage.panning .annotation-canvas.interactive[data-tool="select"],
-.page-editor-stage.panning .annotation-canvas.interactive[data-tool="text"] {
+.page-editor-stage.panning .annotation-canvas.interactive[data-tool="text"],
+.page-editor-stage.panning .annotation-canvas.interactive[data-tool="arrow"] {
   cursor: grabbing;
 }
 
@@ -1208,6 +1209,10 @@ h1 {
 
 .annotation-canvas.interactive[data-tool="text"] {
   cursor: text;
+}
+
+.annotation-canvas.interactive[data-tool="arrow"] {
+  cursor: alias;
 }
 
 .annotation-text-input {

@@ -217,6 +217,78 @@
     return { x: end.x, y: end.y };
   }
 
+  // 引き出し矢印は、テキストの枠を基準にした「局所座標」で持つ。原点は枠の
+  // 左上、X軸は文字の並ぶ向き、Y軸はその下向き。こうしておけば、テキストを
+  // 動かしても回転させても、矢印は枠に付いたまま一緒に動く。
+  function toPagePoint(annotation, localX, localY) {
+    const radians = (normalizeAngle(annotation.rotation) * Math.PI) / 180;
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    return {
+      x: annotation.x + localX * cos + localY * sin,
+      y: annotation.y + localX * sin - localY * cos
+    };
+  }
+
+  // 矢印の根本を枠線の上に置く。枠の中心から先端へ向かう線が、枠のどの辺と
+  // 交わるかを求める。先端が枠の中にあるときは、引きようがないので null。
+  function getArrowAnchor(boxWidth, boxHeight, tipX, tipY) {
+    const centerX = boxWidth / 2;
+    const centerY = boxHeight / 2;
+    const deltaX = tipX - centerX;
+    const deltaY = tipY - centerY;
+    if (deltaX === 0 && deltaY === 0) {
+      return null;
+    }
+    const scaleX = deltaX === 0 ? Infinity : centerX / Math.abs(deltaX);
+    const scaleY = deltaY === 0 ? Infinity : centerY / Math.abs(deltaY);
+    const scale = Math.min(scaleX, scaleY);
+    if (scale >= 1) {
+      return null;
+    }
+    return { x: centerX + deltaX * scale, y: centerY + deltaY * scale };
+  }
+
+  function getCalloutLineWidth(fontSize) {
+    return Math.max(1.2, (Number(fontSize) || 16) * 0.09);
+  }
+
+  // 矢印の形。線と矢じりを、すべて局所座標で返す。
+  function getArrowGeometry(arrow, boxWidth, boxHeight, fontSize) {
+    if (!arrow || !Number.isFinite(arrow.x) || !Number.isFinite(arrow.y)) {
+      return null;
+    }
+    const tail = getArrowAnchor(boxWidth, boxHeight, arrow.x, arrow.y);
+    if (!tail) {
+      return null;
+    }
+    const deltaX = arrow.x - tail.x;
+    const deltaY = arrow.y - tail.y;
+    const length = Math.hypot(deltaX, deltaY);
+    if (length < 2) {
+      return null;
+    }
+    const unitX = deltaX / length;
+    const unitY = deltaY / length;
+    const size = Math.max(4, Number(fontSize) || 16);
+    const headLength = Math.min(Math.max(8, size * 0.8), length);
+    const headWidth = headLength * 0.8;
+    const baseX = arrow.x - unitX * headLength;
+    const baseY = arrow.y - unitY * headLength;
+    // 線は矢じりの根元で止める。先まで引くと矢じりの内側で線が透けて見える。
+    return {
+      tail,
+      tip: { x: arrow.x, y: arrow.y },
+      lineEnd: { x: baseX, y: baseY },
+      head: [
+        { x: arrow.x, y: arrow.y },
+        { x: baseX - unitY * (headWidth / 2), y: baseY + unitX * (headWidth / 2) },
+        { x: baseX + unitY * (headWidth / 2), y: baseY - unitX * (headWidth / 2) }
+      ],
+      thickness: getCalloutLineWidth(size)
+    };
+  }
+
   function hexToRgb(color) {
     const match = /^#?([0-9a-f]{6})$/i.exec(String(color || "").trim());
     const value = match ? parseInt(match[1], 16) : 0;
@@ -307,6 +379,23 @@
         });
         return;
       }
+      if (drawItem.type === "polygon") {
+        const points = Array.isArray(drawItem.points) ? drawItem.points : [];
+        if (points.length < 3) {
+          return;
+        }
+        const { red, green, blue } = hexToRgb(drawItem.color);
+        const path = `${points
+          .map((point, index) => {
+            const x = roundCoordinate(point.x + originX);
+            const y = roundCoordinate(-(point.y + originY));
+            return `${index === 0 ? "M" : "L"} ${x} ${y}`;
+          })
+          .join(" ")} Z`;
+        // color を渡すと塗りだけになる。borderColor を省くと既定の黒枠が付く。
+        page.drawSvgPath(path, { x: 0, y: 0, color: rgb(red, green, blue) });
+        return;
+      }
       if (drawItem.type === "image" && drawItem.image) {
         page.drawImage(drawItem.image, {
           x: drawItem.x + originX,
@@ -353,6 +442,10 @@
     toUserPoint,
     toDisplayPoint,
     getTextPlacement,
+    toPagePoint,
+    getArrowAnchor,
+    getArrowGeometry,
+    getCalloutLineWidth,
     getStrokeAppearance,
     snapStraightLine,
     hexToRgb,
