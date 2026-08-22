@@ -371,6 +371,7 @@ export function createPageEditor(options) {
     editing: null,
     selectedId: null,
     selectedArrowId: null,
+    fontSizeDragging: false,
     history: []
   };
 
@@ -398,6 +399,16 @@ export function createPageEditor(options) {
 
   function annotations() {
     return store.get(editor.pageKey);
+  }
+
+  // 「選択」で選んだ書き込みが、編集中ではないテキストであればそれを返す。
+  // 文字サイズのつまみを、あとからでもそのテキストへ効かせるために使う。
+  function selectedTextAnnotation() {
+    if (!editor.selectedId) {
+      return null;
+    }
+    const annotation = annotations().find((item) => item.id === editor.selectedId);
+    return annotation && annotation.type === "text" ? annotation : null;
   }
 
   function setAnnotations(list) {
@@ -559,6 +570,13 @@ export function createPageEditor(options) {
     dom.thickness.max = marker ? "48" : "16";
     dom.thickness.value = String(thickness);
     dom.thicknessValue.textContent = String(thickness);
+
+    // 既存のテキストを選んでいるときは、そのテキストの文字サイズを映す。
+    // 選んでいなければ、次に置くテキストの既定値を表示する。
+    const selectedText = selectedTextAnnotation();
+    const fontSize = selectedText ? selectedText.fontSize : editor.fontSize;
+    dom.fontSize.value = String(fontSize);
+    dom.fontSizeValue.textContent = String(fontSize);
   }
 
   function viewHint() {
@@ -585,7 +603,7 @@ export function createPageEditor(options) {
       const name = editor.tool === "marker-line" ? "半透明の直線" : "直線";
       return `ドラッグした始点と終点を結ぶ${name}を描きます。ほぼ水平・垂直なら、始点をそのままに水平・垂直へ揃えます。`;
     }
-    return "書き込みをクリックで選択し、ドラッグで移動できます。文字はダブルクリックで編集、Deleteキーで削除します。矢印は先端の白い丸をつまんで動かせ、枠の中まで戻すかDeleteキーでその矢印だけ削除できます。";
+    return "書き込みをクリックで選択し、ドラッグで移動できます。文字はダブルクリックで編集、Deleteキーで削除します。選んだ文字は文字サイズのつまみでその場で大きさを変えられます。矢印は先端の白い丸をつまんで動かせ、枠の中まで戻すかDeleteキーでその矢印だけ削除できます。";
   }
 
   function updateNavigation() {
@@ -779,7 +797,9 @@ export function createPageEditor(options) {
   function startTextEditing(userPoint, existing) {
     commitTextEditing();
     editor.editing = existing
-      ? { ...existing, isNew: false }
+      // originalFontSize は変更の有無を判定するためだけに持つ。commit時に
+      // 取り除くので、保存される注釈には残らない。
+      ? { ...existing, isNew: false, originalFontSize: existing.fontSize }
       : {
           id: createId(),
           type: "text",
@@ -830,9 +850,11 @@ export function createPageEditor(options) {
       const { isNew, ...annotation } = editing;
       addAnnotation({ ...annotation, text });
       setStatus("テキストを挿入しました。");
-    } else if (text !== editing.text) {
+    } else if (text !== editing.text || editing.fontSize !== editing.originalFontSize) {
+      // 文字を変えていなくても、編集中に文字サイズだけ変えていることがある。
+      // そちらも見落とさないよう確認する。
       pushHistory();
-      const { isNew, ...annotation } = editing;
+      const { isNew, originalFontSize, ...annotation } = editing;
       replaceAnnotation(editing.id, { ...annotation, text });
       setStatus("テキストを更新しました。");
     }
@@ -1327,11 +1349,37 @@ export function createPageEditor(options) {
     dom.thicknessValue.textContent = String(value);
   });
   dom.fontSize.addEventListener("input", () => {
-    editor.fontSize = Number(dom.fontSize.value);
-    dom.fontSizeValue.textContent = dom.fontSize.value;
+    const value = Number(dom.fontSize.value);
+    dom.fontSizeValue.textContent = String(value);
+
+    // 入力中のテキストがあれば、それを最優先で変える。
     if (editor.editing) {
-      editor.editing.fontSize = editor.fontSize;
+      editor.editing.fontSize = value;
       positionTextInput();
+      return;
+    }
+
+    // 入力中でなくても、既存のテキストを選んでいればその場で変えられる
+    // ようにする。ドラッグ中に何度も履歴を積むと元に戻すのが大変になる
+    // ため、ひとつのドラッグにつき一度だけ履歴へ積む。
+    const selectedText = selectedTextAnnotation();
+    if (selectedText) {
+      if (!editor.fontSizeDragging) {
+        editor.fontSizeDragging = true;
+        pushHistory();
+      }
+      replaceAnnotation(selectedText.id, { ...selectedText, fontSize: value });
+      drawOverlay();
+      return;
+    }
+
+    // どちらでもなければ、次に置くテキストの既定値として覚えておく。
+    editor.fontSize = value;
+  });
+  dom.fontSize.addEventListener("change", () => {
+    if (editor.fontSizeDragging) {
+      editor.fontSizeDragging = false;
+      setStatus("文字サイズを変更しました。");
     }
   });
   dom.undo.addEventListener("click", undo);
