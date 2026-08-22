@@ -217,9 +217,11 @@
     return { x: end.x, y: end.y };
   }
 
-  // 引き出し矢印は、テキストの枠を基準にした「局所座標」で持つ。原点は枠の
-  // 左上、X軸は文字の並ぶ向き、Y軸はその下向き。こうしておけば、テキストを
-  // 動かしても回転させても、矢印は枠に付いたまま一緒に動く。
+  // テキストの枠を基準にした「局所座標」。原点は枠の左上、X軸は文字の並ぶ
+  // 向き、Y軸はその下向き。枠と矢印の形はこの座標で組み立てる。
+  //
+  // 一方、矢印の先端はページ座標で持つ。指し示す位置こそが意味を持つため、
+  // テキストを動かしても先端はページ上の同じ場所に留まる必要がある。
   function toPagePoint(annotation, localX, localY) {
     const radians = (normalizeAngle(annotation.rotation) * Math.PI) / 180;
     const cos = Math.cos(radians);
@@ -227,6 +229,19 @@
     return {
       x: annotation.x + localX * cos + localY * sin,
       y: annotation.y + localX * sin - localY * cos
+    };
+  }
+
+  // toPagePoint の逆変換。
+  function toLocalPoint(annotation, pageX, pageY) {
+    const radians = (normalizeAngle(annotation.rotation) * Math.PI) / 180;
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    const deltaX = pageX - annotation.x;
+    const deltaY = pageY - annotation.y;
+    return {
+      x: deltaX * cos + deltaY * sin,
+      y: deltaX * sin - deltaY * cos
     };
   }
 
@@ -253,36 +268,39 @@
     return Math.max(1.2, (Number(fontSize) || 16) * 0.09);
   }
 
-  // 矢印の形。線と矢じりを、すべて局所座標で返す。
-  function getArrowGeometry(arrow, boxWidth, boxHeight, fontSize) {
+  // 矢印の形。先端はページ座標で持っているので、ここで枠を基準にした局所座標
+  // へ移してから組み立てる。返す座標もすべて局所座標。
+  function getArrowGeometry(annotation, boxWidth, boxHeight) {
+    const arrow = annotation && annotation.arrow;
     if (!arrow || !Number.isFinite(arrow.x) || !Number.isFinite(arrow.y)) {
       return null;
     }
-    const tail = getArrowAnchor(boxWidth, boxHeight, arrow.x, arrow.y);
+    const tip = toLocalPoint(annotation, arrow.x, arrow.y);
+    const tail = getArrowAnchor(boxWidth, boxHeight, tip.x, tip.y);
     if (!tail) {
       return null;
     }
-    const deltaX = arrow.x - tail.x;
-    const deltaY = arrow.y - tail.y;
+    const deltaX = tip.x - tail.x;
+    const deltaY = tip.y - tail.y;
     const length = Math.hypot(deltaX, deltaY);
     if (length < 2) {
       return null;
     }
     const unitX = deltaX / length;
     const unitY = deltaY / length;
-    const size = Math.max(4, Number(fontSize) || 16);
+    const size = Math.max(4, Number(annotation.fontSize) || 16);
     const headLength = Math.min(Math.max(8, size * 0.8), length);
     const headWidth = headLength * 0.8;
-    const baseX = arrow.x - unitX * headLength;
-    const baseY = arrow.y - unitY * headLength;
-    // 線は矢じりの根元で止める。先まで引くと矢じりの内側で線が透けて見える。
+    const baseX = tip.x - unitX * headLength;
+    const baseY = tip.y - unitY * headLength;
+    // 矢じりは塗らずに線で描く。先端から左右へ開く「く」の字の折れ線として
+    // 返し、軸の線は先端まで引く。
     return {
       tail,
-      tip: { x: arrow.x, y: arrow.y },
-      lineEnd: { x: baseX, y: baseY },
+      tip,
       head: [
-        { x: arrow.x, y: arrow.y },
         { x: baseX - unitY * (headWidth / 2), y: baseY + unitX * (headWidth / 2) },
+        { x: tip.x, y: tip.y },
         { x: baseX + unitY * (headWidth / 2), y: baseY - unitX * (headWidth / 2) }
       ],
       thickness: getCalloutLineWidth(size)
@@ -379,23 +397,6 @@
         });
         return;
       }
-      if (drawItem.type === "polygon") {
-        const points = Array.isArray(drawItem.points) ? drawItem.points : [];
-        if (points.length < 3) {
-          return;
-        }
-        const { red, green, blue } = hexToRgb(drawItem.color);
-        const path = `${points
-          .map((point, index) => {
-            const x = roundCoordinate(point.x + originX);
-            const y = roundCoordinate(-(point.y + originY));
-            return `${index === 0 ? "M" : "L"} ${x} ${y}`;
-          })
-          .join(" ")} Z`;
-        // color を渡すと塗りだけになる。borderColor を省くと既定の黒枠が付く。
-        page.drawSvgPath(path, { x: 0, y: 0, color: rgb(red, green, blue) });
-        return;
-      }
       if (drawItem.type === "image" && drawItem.image) {
         page.drawImage(drawItem.image, {
           x: drawItem.x + originX,
@@ -443,6 +444,7 @@
     toDisplayPoint,
     getTextPlacement,
     toPagePoint,
+    toLocalPoint,
     getArrowAnchor,
     getArrowGeometry,
     getCalloutLineWidth,

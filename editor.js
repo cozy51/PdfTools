@@ -37,7 +37,7 @@ const elements = {
   appVersion: document.querySelector("#app-version")
 };
 
-const APP_VERSION = "1.9.0";
+const APP_VERSION = "1.9.1";
 elements.appVersion.textContent = `v${APP_VERSION}`;
 
 const state = {
@@ -887,23 +887,20 @@ function buildCalloutItems(annotation, boxWidth, boxHeight) {
     }
   ];
 
-  const geometry = core.getArrowGeometry(
-    annotation.arrow,
-    boxWidth,
-    boxHeight,
-    annotation.fontSize
-  );
+  const geometry = core.getArrowGeometry(annotation, boxWidth, boxHeight);
   if (geometry) {
     items.push(
       {
         type: "stroke",
-        points: [geometry.tail, geometry.lineEnd].map(toPage),
+        points: [geometry.tail, geometry.tip].map(toPage),
         thickness: geometry.thickness,
         color: annotation.color
       },
+      // 矢じりも線で描く。塗りつぶさない。
       {
-        type: "polygon",
+        type: "stroke",
         points: geometry.head.map(toPage),
+        thickness: geometry.thickness,
         color: annotation.color
       }
     );
