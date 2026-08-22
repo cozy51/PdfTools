@@ -3,9 +3,9 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="PDFの回転・ページ削除・並べ替え・結合を、ブラウザー内だけで行える無料Webアプリです。">
+    <meta name="description" content="PDFの回転・ページ削除・並べ替え・結合と、テキストの挿入や線の描き込みを、ブラウザー内だけで行える無料Webアプリです。">
     <meta name="theme-color" content="#f5f7fb">
-    <title>PDF 回転・削除・結合</title>
+    <title>PDF 回転・削除・結合・書き込み</title>
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
     <link rel="manifest" href="app.webmanifest">
     <link rel="stylesheet" href="editor.css">
@@ -16,8 +16,8 @@
         <div class="brand">
           <img src="icons/icon-48.png" width="44" height="44" alt="">
           <div>
-            <h1><span>PDF Tools</span><span id="app-version" class="app-version">v1.5.0</span></h1>
-            <p>回転・ページ削除・ファイル結合</p>
+            <h1><span>PDF Tools</span><span id="app-version" class="app-version">v1.6.0</span></h1>
+            <p>回転・削除・結合・テキスト挿入・線の描画</p>
           </div>
         </div>
         <div class="header-badges">
@@ -72,7 +72,7 @@
               <div class="section-heading">
                 <div>
                   <h2 id="files-title">結合するPDF</h2>
-                  <p>上から順に連結します。ドラッグまたは矢印で並べ替えできます</p>
+                  <p>上から順に連結します。ドラッグまたは矢印で並べ替え、ダブルクリックで1ページ目を開けます</p>
                 </div>
                 <button id="add-files-button" class="add-button" type="button">
                   <span aria-hidden="true">＋</span> 追加
@@ -96,7 +96,7 @@
             <div class="section-heading pages-heading">
               <div>
                 <h2 id="pages-title">ページ編集</h2>
-                <p>クリックで複数選択、上部のグリップをドラッグしてページ順を変更できます</p>
+                <p>クリックで複数選択、上部のグリップをドラッグしてページ順を変更、ダブルクリックでページを開いて編集できます</p>
               </div>
               <span id="page-count" class="page-count"></span>
             </div>
@@ -120,6 +120,72 @@
           </section>
         </div>
       </section>
+
+      <div id="page-editor" class="page-editor" role="dialog" aria-modal="true" aria-labelledby="page-editor-title" hidden>
+        <div class="page-editor-panel">
+          <header class="page-editor-header">
+            <div class="page-editor-heading">
+              <h2 id="page-editor-title">ページ編集</h2>
+              <p id="page-editor-subtitle"></p>
+            </div>
+            <div class="page-editor-header-actions">
+              <button id="page-editor-mode" class="mode-button" type="button" aria-pressed="false">編集モードにする</button>
+              <button id="page-editor-close" class="page-editor-close" type="button" aria-label="閉じる">✕</button>
+            </div>
+          </header>
+
+          <div id="page-editor-toolbar" class="page-editor-toolbar" hidden>
+            <div class="tool-group" role="group" aria-label="編集ツール">
+              <button class="tool-button" type="button" data-tool="select" aria-pressed="false">選択</button>
+              <button class="tool-button" type="button" data-tool="text" aria-pressed="false">テキスト</button>
+              <button class="tool-button" type="button" data-tool="pen" aria-pressed="true">ペン</button>
+              <button class="tool-button" type="button" data-tool="line" aria-pressed="false">直線</button>
+            </div>
+            <label class="tool-field">
+              <span>色</span>
+              <input id="annotation-color" type="color" value="#e0245e">
+            </label>
+            <label class="tool-field">
+              <span>線の太さ</span>
+              <input id="annotation-thickness" type="range" min="1" max="16" step="1" value="3">
+              <output id="annotation-thickness-value">3</output>
+            </label>
+            <label class="tool-field">
+              <span>文字サイズ</span>
+              <input id="annotation-font-size" type="range" min="8" max="72" step="1" value="18">
+              <output id="annotation-font-size-value">18</output>
+            </label>
+            <div class="tool-group">
+              <button id="annotation-undo" class="tool-button" type="button">元に戻す</button>
+              <button id="annotation-delete" class="tool-button" type="button">選択を削除</button>
+              <button id="annotation-clear" class="tool-button" type="button">すべて消去</button>
+            </div>
+          </div>
+
+          <div id="page-editor-stage" class="page-editor-stage">
+            <div id="page-editor-surface" class="page-editor-surface">
+              <canvas id="page-editor-canvas"></canvas>
+              <canvas id="annotation-canvas" class="annotation-canvas"></canvas>
+              <textarea id="annotation-text-input" class="annotation-text-input" spellcheck="false" wrap="off" aria-label="挿入するテキスト" hidden></textarea>
+            </div>
+          </div>
+
+          <footer class="page-editor-footer">
+            <p id="page-editor-hint" class="page-editor-hint"></p>
+            <div class="page-editor-actions">
+              <div class="zoom-group" role="group" aria-label="表示倍率">
+                <button id="page-zoom-out" class="tool-button" type="button" aria-label="縮小">－</button>
+                <span id="page-zoom-value" class="zoom-value">100%</span>
+                <button id="page-zoom-in" class="tool-button" type="button" aria-label="拡大">＋</button>
+                <button id="page-zoom-fit" class="tool-button" type="button">全体表示</button>
+              </div>
+              <button id="page-editor-previous" class="tool-button" type="button">前のページ</button>
+              <button id="page-editor-next" class="tool-button" type="button">次のページ</button>
+              <button id="page-editor-done" class="done-button" type="button">編集を終える</button>
+            </div>
+          </footer>
+        </div>
+      </div>
 
       <div id="status" class="status" role="status" aria-live="polite"></div>
     </main>

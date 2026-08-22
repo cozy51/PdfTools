@@ -117,6 +117,142 @@
     return output;
   }
 
+  function getPageBox(page) {
+    if (!page || typeof page.getCropBox !== "function") {
+      throw new TypeError("A PDF page is required.");
+    }
+    const box = page.getCropBox();
+    const width = Math.abs(box.width);
+    const height = Math.abs(box.height);
+    return {
+      x: box.width < 0 ? box.x + box.width : box.x,
+      y: box.height < 0 ? box.y + box.height : box.y,
+      width,
+      height
+    };
+  }
+
+  // ページの見た目の大きさ。90度と270度では縦横が入れ替わる。
+  function getDisplaySize(width, height, rotation) {
+    const angle = normalizeAngle(rotation);
+    return angle === 90 || angle === 270
+      ? { width: height, height: width }
+      : { width, height };
+  }
+
+  // 画面座標（左上原点・下向きY）からPDFのページ座標（左下原点・上向きY）へ。
+  // 座標はクロップボックスの左下を原点とした相対値で扱う。
+  function toUserPoint(displayX, displayY, width, height, rotation) {
+    const angle = normalizeAngle(rotation);
+    if (angle === 90) {
+      return { x: displayY, y: displayX };
+    }
+    if (angle === 180) {
+      return { x: width - displayX, y: displayY };
+    }
+    if (angle === 270) {
+      return { x: width - displayY, y: height - displayX };
+    }
+    return { x: displayX, y: height - displayY };
+  }
+
+  // toUserPoint の逆変換。
+  function toDisplayPoint(userX, userY, width, height, rotation) {
+    const angle = normalizeAngle(rotation);
+    if (angle === 90) {
+      return { x: userY, y: userX };
+    }
+    if (angle === 180) {
+      return { x: width - userX, y: userY };
+    }
+    if (angle === 270) {
+      return { x: height - userY, y: width - userX };
+    }
+    return { x: userX, y: height - userY };
+  }
+
+  // 注釈テキストは「作成時のページ角度」を向きとして持つ。ページ座標での
+  // 左上位置と大きさから、pdf-lib の drawImage が必要とする左下位置を求める。
+  function getTextPlacement(annotation, boxWidth, boxHeight) {
+    const rotate = normalizeAngle(annotation.rotation);
+    const radians = (rotate * Math.PI) / 180;
+    return {
+      x: annotation.x + boxHeight * Math.sin(radians),
+      y: annotation.y - boxHeight * Math.cos(radians),
+      width: boxWidth,
+      height: boxHeight,
+      rotate
+    };
+  }
+
+  function hexToRgb(color) {
+    const match = /^#?([0-9a-f]{6})$/i.exec(String(color || "").trim());
+    const value = match ? parseInt(match[1], 16) : 0;
+    return {
+      red: ((value >> 16) & 255) / 255,
+      green: ((value >> 8) & 255) / 255,
+      blue: (value & 255) / 255
+    };
+  }
+
+  // 画面で作った注釈をPDFページへ描き込む。テキストは呼び出し側が画像に
+  // したものを受け取る（標準フォントでは日本語を埋め込めないため）。
+  function applyPageAnnotations(page, drawItems, offset) {
+    if (!page || !Array.isArray(drawItems)) {
+      throw new TypeError("A PDF page and draw items are required.");
+    }
+    const originX = offset && Number.isFinite(offset.x) ? offset.x : 0;
+    const originY = offset && Number.isFinite(offset.y) ? offset.y : 0;
+    const { rgb, degrees, LineCapStyle } = root.PDFLib;
+
+    drawItems.forEach((drawItem) => {
+      if (!drawItem) {
+        return;
+      }
+      if (drawItem.type === "stroke") {
+        const points = Array.isArray(drawItem.points) ? drawItem.points : [];
+        if (points.length === 0) {
+          return;
+        }
+        const { red, green, blue } = hexToRgb(drawItem.color);
+        const color = rgb(red, green, blue);
+        const thickness = Math.max(0.2, Number(drawItem.thickness) || 1);
+        if (points.length === 1) {
+          page.drawCircle({
+            x: points[0].x + originX,
+            y: points[0].y + originY,
+            size: thickness / 2,
+            color,
+            borderWidth: 0
+          });
+          return;
+        }
+        for (let index = 1; index < points.length; index += 1) {
+          page.drawLine({
+            start: {
+              x: points[index - 1].x + originX,
+              y: points[index - 1].y + originY
+            },
+            end: { x: points[index].x + originX, y: points[index].y + originY },
+            thickness,
+            color,
+            lineCap: LineCapStyle.Round
+          });
+        }
+        return;
+      }
+      if (drawItem.type === "image" && drawItem.image) {
+        page.drawImage(drawItem.image, {
+          x: drawItem.x + originX,
+          y: drawItem.y + originY,
+          width: drawItem.width,
+          height: drawItem.height,
+          rotate: degrees(normalizeAngle(drawItem.rotate))
+        });
+      }
+    });
+  }
+
   function formatBytes(bytes) {
     if (!Number.isFinite(bytes) || bytes < 0) {
       return "";
@@ -140,6 +276,13 @@
     createMergedOutputName,
     mergePdfPages,
     mergeOrderedPdfPages,
+    getPageBox,
+    getDisplaySize,
+    toUserPoint,
+    toDisplayPoint,
+    getTextPlacement,
+    hexToRgb,
+    applyPageAnnotations,
     formatBytes
   };
 

@@ -1,7 +1,7 @@
 {
-  "name": "PDF 回転・削除・結合",
+  "name": "PDF 回転・削除・結合・書き込み",
   "short_name": "PDF Tools",
-  "description": "PDFの回転・ページ削除・並べ替え・結合をブラウザー内で行います。",
+  "description": "PDFの回転・ページ削除・並べ替え・結合と、テキストの挿入や線の描き込みをブラウザー内で行います。",
   "id": "./",
   "start_url": "./",
   "scope": "./",
