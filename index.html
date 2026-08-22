@@ -193,9 +193,24 @@
               <output id="annotation-font-size-value">18</output>
             </label>
             <div class="tool-group">
-              <button id="annotation-undo" class="tool-button" type="button">元に戻す</button>
+              <button id="annotation-undo" class="tool-button" type="button" title="元に戻す (Ctrl+Z)" aria-label="直前の書き込み操作を元に戻す (Ctrl+Z)">
+                <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path class="stroke-sample" d="M9 14 4 9l5-5"/>
+                  <path class="stroke-sample" d="M4 9h10a6 6 0 1 1 0 12h-3"/>
+                </svg>
+                元に戻す
+              </button>
               <button id="annotation-delete" class="tool-button" type="button">選択を削除</button>
-              <button id="annotation-clear" class="tool-button" type="button">すべて消去</button>
+              <button id="annotation-clear" class="tool-button" type="button" aria-label="このページの書き込みをすべて消去する">
+                <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path class="stroke-sample" d="M4 7h16"/>
+                  <path class="stroke-sample" d="M9 7V4h6v3"/>
+                  <path class="stroke-sample" d="M6 7l1 13h10l1-13"/>
+                  <path class="stroke-sample" d="M10 11v6"/>
+                  <path class="stroke-sample" d="M14 11v6"/>
+                </svg>
+                すべて消去
+              </button>
             </div>
           </div>
 
