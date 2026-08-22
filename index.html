@@ -16,7 +16,7 @@
         <div class="brand">
           <img src="icons/icon-48.png" width="44" height="44" alt="">
           <div>
-            <h1><span>PDF Tools</span><span id="app-version" class="app-version">v1.9.1</span></h1>
+            <h1><span>PDF Tools</span><span id="app-version" class="app-version">v1.10.0</span></h1>
             <p>回転・削除・結合・テキスト挿入・ペンと蛍光ペン</p>
           </div>
         </div>
@@ -135,14 +135,17 @@
           </header>
 
           <div id="page-editor-toolbar" class="page-editor-toolbar" hidden>
-            <div class="tool-group" role="group" aria-label="編集ツール">
+            <div class="tool-group" role="group" aria-label="選択">
               <button class="tool-button" type="button" data-tool="select" aria-pressed="false">選択</button>
-              <button class="tool-button" type="button" data-tool="text" aria-pressed="false">テキスト</button>
-              <button class="tool-button" type="button" data-tool="arrow" aria-pressed="false" aria-label="テキストから引き出す矢印を付ける">
+            </div>
+            <div class="tool-set" role="group" aria-labelledby="tool-set-text">
+              <span class="tool-set-label" id="tool-set-text">テキスト</span>
+              <button class="tool-button" type="button" data-tool="text" aria-pressed="false" aria-label="クリックした位置にテキストを挿入する">挿入</button>
+              <button class="tool-button" type="button" data-tool="arrow" aria-pressed="false" aria-label="選んだテキストから指し示す矢印を追加する">
                 <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true">
                   <path class="stroke-sample" d="M4 20 17.5 6.5M17.5 6.5H11M17.5 6.5V13"/>
                 </svg>
-                矢印
+                矢印を追加
               </button>
             </div>
             <div class="tool-set" role="group" aria-labelledby="tool-set-pen">

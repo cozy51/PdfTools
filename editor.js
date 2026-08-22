@@ -37,7 +37,7 @@ const elements = {
   appVersion: document.querySelector("#app-version")
 };
 
-const APP_VERSION = "1.9.1";
+const APP_VERSION = "1.10.0";
 elements.appVersion.textContent = `v${APP_VERSION}`;
 
 const state = {
@@ -866,9 +866,11 @@ function rotatePage(itemId, sourceIndex, delta) {
 }
 
 // 矢印付きのテキストに添える枠と矢印を組み立てる。画面で見えているものと
-// 同じ形になるよう、計算は画面側と同じ関数を使う。
+// 同じ形になるよう、計算は画面側と同じ関数を使う。ひとつのテキストに
+// 複数の矢印を持てるので、すべて重ねて書き込む。
 function buildCalloutItems(annotation, boxWidth, boxHeight) {
-  if (!annotation.arrow) {
+  const arrows = annotation.arrows || [];
+  if (arrows.length === 0) {
     return [];
   }
   const toPage = (point) => core.toPagePoint(annotation, point.x, point.y);
@@ -887,8 +889,11 @@ function buildCalloutItems(annotation, boxWidth, boxHeight) {
     }
   ];
 
-  const geometry = core.getArrowGeometry(annotation, boxWidth, boxHeight);
-  if (geometry) {
+  arrows.forEach((arrow) => {
+    const geometry = core.getArrowGeometry(annotation, arrow, boxWidth, boxHeight);
+    if (!geometry) {
+      return;
+    }
     items.push(
       {
         type: "stroke",
@@ -904,7 +909,7 @@ function buildCalloutItems(annotation, boxWidth, boxHeight) {
         color: annotation.color
       }
     );
-  }
+  });
   return items;
 }
 
