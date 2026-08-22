@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const zlib = require("node:zlib");
 
 const PDFLib = require("../vendor/pdf-lib.min.js");
 globalThis.PDFLib = PDFLib;
@@ -139,6 +140,46 @@ async function run() {
   assert.ok(Math.abs(turned.y - 500) < 1e-9);
   assert.equal(turned.rotate, 90);
 
+  // 手で引いた直線の水平・垂直補正。始点は動かさない。
+  const origin = { x: 100, y: 100 };
+  assert.deepEqual(core.snapStraightLine(origin, { x: 300, y: 105 }), {
+    x: 300,
+    y: 100
+  });
+  assert.deepEqual(core.snapStraightLine(origin, { x: 95, y: 300 }), {
+    x: 100,
+    y: 300
+  });
+  // 傾きがはっきりしている線はそのまま残す。
+  assert.deepEqual(core.snapStraightLine(origin, { x: 300, y: 160 }), {
+    x: 300,
+    y: 160
+  });
+  assert.deepEqual(core.snapStraightLine(origin, { x: 160, y: 300 }), {
+    x: 160,
+    y: 300
+  });
+  // 長さが0のときは判定しようがないので、そのまま返す。
+  assert.deepEqual(core.snapStraightLine(origin, { x: 100, y: 100 }), {
+    x: 100,
+    y: 100
+  });
+  // 許容角は呼び出し側から広げられる。
+  assert.deepEqual(core.snapStraightLine(origin, { x: 300, y: 160 }, 20), {
+    x: 300,
+    y: 100
+  });
+
+  assert.deepEqual(core.getStrokeAppearance("marker"), {
+    marker: true,
+    opacity: 0.4
+  });
+  assert.deepEqual(core.getStrokeAppearance("pen"), { marker: false, opacity: 1 });
+  assert.deepEqual(core.getStrokeAppearance(undefined), {
+    marker: false,
+    opacity: 1
+  });
+
   assert.deepEqual(core.hexToRgb("#ff8000"), {
     red: 1,
     green: 128 / 255,
@@ -156,7 +197,7 @@ async function run() {
     height: 540
   });
 
-  const beforeAnnotations = (await annotated.save()).length;
+  const beforeAnnotations = (await annotated.save({ useObjectStreams: false })).length;
   core.applyPageAnnotations(
     annotatedPage,
     [
@@ -170,11 +211,47 @@ async function run() {
         thickness: 3,
         color: "#1d4ed8"
       },
-      { type: "stroke", points: [{ x: 40, y: 40 }], thickness: 5, color: "#e0245e" }
+      { type: "stroke", points: [{ x: 40, y: 40 }], thickness: 5, color: "#e0245e" },
+      {
+        type: "stroke",
+        variant: "marker",
+        points: [
+          { x: 20, y: 200 },
+          { x: 300, y: 205 }
+        ],
+        thickness: 16,
+        color: "#ffe14d"
+      }
     ],
     core.getPageBox(annotatedPage)
   );
-  assert.ok((await annotated.save()).length > beforeAnnotations);
+  // オブジェクトストリームにまとめられると中身を確認できないため、
+  // ここでは展開したまま保存する。
+  const annotatedBytes = await annotated.save({ useObjectStreams: false });
+  assert.ok(annotatedBytes.length > beforeAnnotations);
+
+  // 蛍光ペンは半透明かつ乗算で重ねる。継ぎ目が濃くならないよう、ひと続きの
+  // パスを一度で描いていることも確かめる。
+  const content = Buffer.from(annotatedBytes).toString("latin1");
+  assert.match(content, /\/CA 0\.4/);
+  assert.match(content, /\/BM \/Multiply/);
+  const streams = [...content.matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)]
+    .map((match) => {
+      try {
+        return zlib.inflateSync(Buffer.from(match[1], "latin1")).toString("latin1");
+      } catch {
+        return "";
+      }
+    })
+    .join("\n");
+  // 折れ線の角がとげのように飛び出さないよう、線のつなぎ方を丸めている。
+  assert.match(streams, /^1 j$/m);
+  // 蛍光ペンは平らな線端（囲いで指定）、ペンは丸い線端（各描画で上書き）。
+  assert.match(streams, /^q\n1 j\n0 J$/m);
+  assert.match(streams, /^1 J$/m);
+  // クロップボックスの原点(20,30)を足した座標が、ひと続きのパスとして並ぶ。
+  const markerPath = streams.match(/40 -230 m\s+320 -235 l\s+S/);
+  assert.ok(markerPath, "蛍光ペンが1本のパスとして描かれていること");
 
   assert.throws(() => core.applyPageAnnotations(null, []), TypeError);
 

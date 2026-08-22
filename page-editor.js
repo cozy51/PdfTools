@@ -35,6 +35,14 @@ function toRadians(degrees) {
   return (degrees * Math.PI) / 180;
 }
 
+function isMarkerTool(tool) {
+  return tool === "marker" || tool === "marker-line";
+}
+
+function isStraightTool(tool) {
+  return tool === "line" || tool === "marker-line";
+}
+
 export function layoutText(annotation) {
   const fontSize = Math.max(4, Number(annotation.fontSize) || 16);
   const context = getMeasureContext();
@@ -136,17 +144,27 @@ export function drawAnnotations(context, annotations, box, rotation, options = {
     if (selected) {
       outlineStroke(context, points, thickness);
     }
+    const appearance = core.getStrokeAppearance(annotation.variant);
+    context.save();
+    context.globalAlpha = appearance.opacity;
+    if (appearance.marker) {
+      // 下の文字が黒いまま残るように重ねる。サムネイルのようにページの上へ
+      // 直接描く場合に効き、書き込み用の透明なキャンバスでは通常の重ねになる。
+      context.globalCompositeOperation = "multiply";
+    }
     context.strokeStyle = annotation.color;
     context.fillStyle = annotation.color;
     context.lineWidth = thickness;
+    context.lineCap = appearance.marker ? "butt" : "round";
     if (points.length === 1) {
       context.beginPath();
       context.arc(points[0].x, points[0].y, thickness / 2, 0, Math.PI * 2);
       context.fill();
-      return;
+    } else {
+      traceStroke(context, points);
+      context.stroke();
     }
-    traceStroke(context, points);
-    context.stroke();
+    context.restore();
   });
 
   context.restore();
@@ -223,6 +241,7 @@ export function createPageEditor(options) {
     toolButtons: Array.from(document.querySelectorAll("[data-tool]")),
     color: document.querySelector("#annotation-color"),
     thickness: document.querySelector("#annotation-thickness"),
+    thicknessLabel: document.querySelector("#annotation-thickness-label"),
     thicknessValue: document.querySelector("#annotation-thickness-value"),
     fontSize: document.querySelector("#annotation-font-size"),
     fontSizeValue: document.querySelector("#annotation-font-size-value"),
@@ -248,8 +267,11 @@ export function createPageEditor(options) {
     open: false,
     mode: "view",
     tool: "pen",
-    color: "#e0245e",
-    thickness: 3,
+    // ペンと蛍光ペンは用途が違うため、色と太さをそれぞれ覚えておく。
+    penColor: "#e0245e",
+    penThickness: 3,
+    markerColor: "#ffe14d",
+    markerThickness: 16,
     fontSize: 18,
     pageKey: "",
     descriptor: null,
@@ -270,6 +292,18 @@ export function createPageEditor(options) {
     selectedId: null,
     history: []
   };
+
+  function activeVariant() {
+    return isMarkerTool(editor.tool) ? "marker" : "pen";
+  }
+
+  function activeColor() {
+    return isMarkerTool(editor.tool) ? editor.markerColor : editor.penColor;
+  }
+
+  function activeThickness() {
+    return isMarkerTool(editor.tool) ? editor.markerThickness : editor.penThickness;
+  }
 
   function displaySize() {
     return core.getDisplaySize(editor.box.width, editor.box.height, editor.rotation);
@@ -424,10 +458,23 @@ export function createPageEditor(options) {
     });
     dom.overlay.classList.toggle("interactive", editing);
     dom.overlay.dataset.tool = editing ? editor.tool : "";
+    syncToolSettings();
     dom.undo.disabled = editor.history.length === 0;
     dom.removeSelected.disabled = !editor.selectedId;
     dom.clear.disabled = annotations().length === 0;
     dom.hint.textContent = editing ? toolHint() : viewHint();
+  }
+
+  // 色と太さは道具ごとに覚えているので、選び直すたびに表示を合わせる。
+  function syncToolSettings() {
+    const marker = isMarkerTool(editor.tool);
+    const thickness = activeThickness();
+    dom.color.value = activeColor();
+    dom.thicknessLabel.textContent = marker ? "蛍光ペンの太さ" : "ペンの太さ";
+    dom.thickness.min = marker ? "6" : "1";
+    dom.thickness.max = marker ? "48" : "16";
+    dom.thickness.value = String(thickness);
+    dom.thicknessValue.textContent = String(thickness);
   }
 
   function viewHint() {
@@ -444,8 +491,12 @@ export function createPageEditor(options) {
     if (editor.tool === "pen") {
       return "ドラッグすると、なぞった通りに線を描きます。";
     }
-    if (editor.tool === "line") {
-      return "ドラッグした始点と終点を結ぶ直線を描きます。";
+    if (editor.tool === "marker") {
+      return "ドラッグすると、なぞった部分を半透明の色で塗ります。下の文字は消えません。";
+    }
+    if (isStraightTool(editor.tool)) {
+      const name = editor.tool === "marker-line" ? "半透明の直線" : "直線";
+      return `ドラッグした始点と終点を結ぶ${name}を描きます。ほぼ水平・垂直なら、始点をそのままに水平・垂直へ揃えます。`;
     }
     return "書き込みをクリックで選択し、ドラッグで移動できます。文字はダブルクリックで編集、Deleteキーで削除します。";
   }
@@ -602,7 +653,7 @@ export function createPageEditor(options) {
           rotation: editor.rotation,
           text: "",
           fontSize: editor.fontSize,
-          color: editor.color,
+          color: editor.penColor,
           isNew: true
         };
     dom.textInput.value = editor.editing.text;
@@ -717,13 +768,17 @@ export function createPageEditor(options) {
       return;
     }
 
+    if (editor.tool !== "pen" && editor.tool !== "marker" && !isStraightTool(editor.tool)) {
+      return;
+    }
     const userPoint = toUser(point);
     editor.drawing = {
       type: "stroke",
+      variant: activeVariant(),
       points: [userPoint, userPoint],
-      color: editor.color,
-      thickness: editor.thickness,
-      straight: editor.tool === "line"
+      color: activeColor(),
+      thickness: activeThickness(),
+      straight: isStraightTool(editor.tool)
     };
     dom.overlay.setPointerCapture(event.pointerId);
     drawOverlay();
@@ -763,7 +818,12 @@ export function createPageEditor(options) {
     }
     const userPoint = toUser(pointerPosition(event));
     if (editor.drawing.straight) {
-      editor.drawing.points[1] = userPoint;
+      // ページの回転は90度単位なので、ページ座標で水平・垂直に直せば
+      // 画面で見ても水平・垂直になる。
+      editor.drawing.points[1] = core.snapStraightLine(
+        editor.drawing.points[0],
+        userPoint
+      );
     } else {
       const last = editor.drawing.points[editor.drawing.points.length - 1];
       if (Math.hypot(userPoint.x - last.x, userPoint.y - last.y) >= 0.75) {
@@ -797,13 +857,19 @@ export function createPageEditor(options) {
     addAnnotation({
       id: createId(),
       type: "stroke",
+      variant: drawing.variant,
       points: isDot ? [start] : points,
       color: drawing.color,
       thickness: drawing.thickness
     });
     drawOverlay();
     updateToolbar();
-    setStatus(drawing.straight ? "直線を描画しました。" : "線を描画しました。");
+    const name = drawing.variant === "marker" ? "蛍光ペン" : "ペン";
+    setStatus(
+      drawing.straight
+        ? `${name}で直線を描画しました。`
+        : `${name}で線を描画しました。`
+    );
   }
 
   function onDoubleClick(event) {
@@ -906,11 +972,20 @@ export function createPageEditor(options) {
     button.addEventListener("click", () => setTool(button.dataset.tool));
   });
   dom.color.addEventListener("input", () => {
-    editor.color = dom.color.value;
+    if (isMarkerTool(editor.tool)) {
+      editor.markerColor = dom.color.value;
+    } else {
+      editor.penColor = dom.color.value;
+    }
   });
   dom.thickness.addEventListener("input", () => {
-    editor.thickness = Number(dom.thickness.value);
-    dom.thicknessValue.textContent = dom.thickness.value;
+    const value = Number(dom.thickness.value);
+    if (isMarkerTool(editor.tool)) {
+      editor.markerThickness = value;
+    } else {
+      editor.penThickness = value;
+    }
+    dom.thicknessValue.textContent = String(value);
   });
   dom.fontSize.addEventListener("input", () => {
     editor.fontSize = Number(dom.fontSize.value);

@@ -185,6 +185,38 @@
     };
   }
 
+  // 蛍光ペンは半透明で重ねる。乗算で重ねるため、下の文字は黒いまま残る。
+  const MARKER_OPACITY = 0.4;
+  // 直線がこの角度以内なら、水平または垂直として引き直す。
+  const STRAIGHT_SNAP_DEGREES = 7;
+
+  function getStrokeAppearance(variant) {
+    const marker = variant === "marker";
+    return { marker, opacity: marker ? MARKER_OPACITY : 1 };
+  }
+
+  // 手で引いた直線を水平・垂直へ補正する。始点は動かさず、終点だけを
+  // その軸へ下ろす。斜めに引きたいときまで巻き込まないよう、許容角は狭くとる。
+  function snapStraightLine(start, end, toleranceDegrees) {
+    const tolerance = Number.isFinite(toleranceDegrees)
+      ? toleranceDegrees
+      : STRAIGHT_SNAP_DEGREES;
+    const deltaX = end.x - start.x;
+    const deltaY = end.y - start.y;
+    if (deltaX === 0 && deltaY === 0) {
+      return { x: end.x, y: end.y };
+    }
+    const angle =
+      (Math.atan2(Math.abs(deltaY), Math.abs(deltaX)) * 180) / Math.PI;
+    if (angle <= tolerance) {
+      return { x: end.x, y: start.y };
+    }
+    if (angle >= 90 - tolerance) {
+      return { x: start.x, y: end.y };
+    }
+    return { x: end.x, y: end.y };
+  }
+
   function hexToRgb(color) {
     const match = /^#?([0-9a-f]{6})$/i.exec(String(color || "").trim());
     const value = match ? parseInt(match[1], 16) : 0;
@@ -203,7 +235,28 @@
     }
     const originX = offset && Number.isFinite(offset.x) ? offset.x : 0;
     const originY = offset && Number.isFinite(offset.y) ? offset.y : 0;
-    const { rgb, degrees, LineCapStyle } = root.PDFLib;
+    const {
+      rgb,
+      degrees,
+      BlendMode,
+      LineCapStyle,
+      LineJoinStyle,
+      pushGraphicsState,
+      popGraphicsState,
+      setLineCap,
+      setLineJoin
+    } = root.PDFLib;
+
+    // 書き込みは元のページ内容と同じ内容ストリームへ続けて置かれるため、
+    // 指定しない項目は元の内容が残した状態を引き継いでしまう。
+    // drawSvgPath は線のつなぎ方を指定せず、線端も既定値のときは省くので、
+    // 囲いの中で両方を決めておく。つなぎ方を丸めないと、折れ線の角が
+    // とげのように飛び出す。
+    page.pushOperators(
+      pushGraphicsState(),
+      setLineJoin(LineJoinStyle.Round),
+      setLineCap(LineCapStyle.Butt)
+    );
 
     drawItems.forEach((drawItem) => {
       if (!drawItem) {
@@ -217,28 +270,41 @@
         const { red, green, blue } = hexToRgb(drawItem.color);
         const color = rgb(red, green, blue);
         const thickness = Math.max(0.2, Number(drawItem.thickness) || 1);
+        const { marker, opacity } = getStrokeAppearance(drawItem.variant);
+        const blendMode = marker ? BlendMode.Multiply : BlendMode.Normal;
         if (points.length === 1) {
           page.drawCircle({
             x: points[0].x + originX,
             y: points[0].y + originY,
             size: thickness / 2,
             color,
+            opacity,
+            blendMode,
             borderWidth: 0
           });
           return;
         }
-        for (let index = 1; index < points.length; index += 1) {
-          page.drawLine({
-            start: {
-              x: points[index - 1].x + originX,
-              y: points[index - 1].y + originY
-            },
-            end: { x: points[index].x + originX, y: points[index].y + originY },
-            thickness,
-            color,
-            lineCap: LineCapStyle.Round
-          });
-        }
+        // 区間ごとに分けて描くと、半透明の蛍光ペンでは継ぎ目が二重になって
+        // そこだけ濃くなる。ひと続きのパスとして一度で描く。
+        // drawSvgPath はY軸を反転させて描くため、Y座標の符号を入れ替える。
+        const path = points
+          .map((point, index) => {
+            const x = roundCoordinate(point.x + originX);
+            const y = roundCoordinate(-(point.y + originY));
+            return `${index === 0 ? "M" : "L"} ${x} ${y}`;
+          })
+          .join(" ");
+        page.drawSvgPath(path, {
+          x: 0,
+          y: 0,
+          borderColor: color,
+          borderWidth: thickness,
+          borderOpacity: opacity,
+          // 蛍光ペンは平らな線端にする。丸めると、なぞった範囲より半幅ぶん
+          // はみ出して塗られてしまう。
+          borderLineCap: marker ? LineCapStyle.Butt : LineCapStyle.Round,
+          blendMode
+        });
         return;
       }
       if (drawItem.type === "image" && drawItem.image) {
@@ -251,6 +317,12 @@
         });
       }
     });
+
+    page.pushOperators(popGraphicsState());
+  }
+
+  function roundCoordinate(value) {
+    return Math.round(value * 100) / 100;
   }
 
   function formatBytes(bytes) {
@@ -281,6 +353,8 @@
     toUserPoint,
     toDisplayPoint,
     getTextPlacement,
+    getStrokeAppearance,
+    snapStraightLine,
     hexToRgb,
     applyPageAnnotations,
     formatBytes

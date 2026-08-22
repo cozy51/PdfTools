@@ -16,8 +16,8 @@
         <div class="brand">
           <img src="icons/icon-48.png" width="44" height="44" alt="">
           <div>
-            <h1><span>PDF Tools</span><span id="app-version" class="app-version">v1.6.0</span></h1>
-            <p>回転・削除・結合・テキスト挿入・線の描画</p>
+            <h1><span>PDF Tools</span><span id="app-version" class="app-version">v1.7.0</span></h1>
+            <p>回転・削除・結合・テキスト挿入・ペンと蛍光ペン</p>
           </div>
         </div>
         <div class="header-badges">
@@ -138,15 +138,23 @@
             <div class="tool-group" role="group" aria-label="編集ツール">
               <button class="tool-button" type="button" data-tool="select" aria-pressed="false">選択</button>
               <button class="tool-button" type="button" data-tool="text" aria-pressed="false">テキスト</button>
-              <button class="tool-button" type="button" data-tool="pen" aria-pressed="true">ペン</button>
-              <button class="tool-button" type="button" data-tool="line" aria-pressed="false">直線</button>
+            </div>
+            <div class="tool-group" role="group" aria-label="ペン">
+              <span class="tool-group-label">ペン</span>
+              <button class="tool-button" type="button" data-tool="pen" aria-pressed="true" aria-label="ペンでなぞって描く">フリー</button>
+              <button class="tool-button" type="button" data-tool="line" aria-pressed="false" aria-label="ペンで直線を描く">直線</button>
+            </div>
+            <div class="tool-group marker-group" role="group" aria-label="蛍光ペン">
+              <span class="tool-group-label">蛍光ペン</span>
+              <button class="tool-button" type="button" data-tool="marker" aria-pressed="false" aria-label="蛍光ペンでなぞって塗る">フリー</button>
+              <button class="tool-button" type="button" data-tool="marker-line" aria-pressed="false" aria-label="蛍光ペンで直線を引く">直線</button>
             </div>
             <label class="tool-field">
               <span>色</span>
               <input id="annotation-color" type="color" value="#e0245e">
             </label>
             <label class="tool-field">
-              <span>線の太さ</span>
+              <span id="annotation-thickness-label">ペンの太さ</span>
               <input id="annotation-thickness" type="range" min="1" max="16" step="1" value="3">
               <output id="annotation-thickness-value">3</output>
             </label>
