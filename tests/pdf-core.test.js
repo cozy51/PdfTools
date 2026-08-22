@@ -170,6 +170,60 @@ async function run() {
     y: 100
   });
 
+  // 引き出し矢印。局所座標（枠の左上が原点、Yは下向き）で扱う。
+  const callout = { x: 100, y: 500, rotation: 0 };
+  assert.deepEqual(core.toPagePoint(callout, 30, 20), { x: 130, y: 480 });
+  // 90度回した向きでは、局所のX方向がページの上向きになる。
+  const turnedCallout = { x: 100, y: 500, rotation: 90 };
+  const turnedPoint = core.toPagePoint(turnedCallout, 30, 20);
+  assert.ok(Math.abs(turnedPoint.x - 120) < 1e-9);
+  assert.ok(Math.abs(turnedPoint.y - 530) < 1e-9);
+
+  // 根本は必ず枠線の上に来る。
+  const boxWidth = 100;
+  const boxHeight = 40;
+  [
+    [500, 20],
+    [-500, 20],
+    [50, 400],
+    [50, -400],
+    [400, 300]
+  ].forEach(([tipX, tipY]) => {
+    const anchor = core.getArrowAnchor(boxWidth, boxHeight, tipX, tipY);
+    const onEdge =
+      Math.abs(anchor.x) < 1e-9 ||
+      Math.abs(anchor.x - boxWidth) < 1e-9 ||
+      Math.abs(anchor.y) < 1e-9 ||
+      Math.abs(anchor.y - boxHeight) < 1e-9;
+    assert.ok(onEdge, `枠線の上にない: ${JSON.stringify(anchor)}`);
+    assert.ok(anchor.x >= -1e-9 && anchor.x <= boxWidth + 1e-9);
+    assert.ok(anchor.y >= -1e-9 && anchor.y <= boxHeight + 1e-9);
+  });
+  // 真横へ引けば、根本は左右の辺の中央になる。
+  assert.deepEqual(core.getArrowAnchor(boxWidth, boxHeight, 500, 20), {
+    x: 100,
+    y: 20
+  });
+  // 先端が枠の中や中心と同じなら、引きようがない。
+  assert.equal(core.getArrowAnchor(boxWidth, boxHeight, 60, 25), null);
+  assert.equal(core.getArrowAnchor(boxWidth, boxHeight, 50, 20), null);
+
+  const arrow = core.getArrowGeometry({ x: 400, y: 20 }, boxWidth, boxHeight, 18);
+  assert.deepEqual(arrow.tail, { x: 100, y: 20 });
+  assert.deepEqual(arrow.tip, { x: 400, y: 20 });
+  assert.equal(arrow.head.length, 3);
+  // 線は矢じりの根元で止める。先まで引くと矢じりの内側で線が透ける。
+  assert.ok(arrow.lineEnd.x > arrow.tail.x && arrow.lineEnd.x < arrow.tip.x);
+  // 矢じりは先端を頂点に、線と直角の向きへ広がる。
+  assert.ok(Math.abs(arrow.head[1].y - arrow.head[2].y) > 1);
+  assert.equal(core.getArrowGeometry(null, boxWidth, boxHeight, 18), null);
+  assert.equal(core.getArrowGeometry({ x: 60, y: 25 }, boxWidth, boxHeight, 18), null);
+  // 枠すれすれで、線が引けないほど短いときも描かない。
+  assert.equal(
+    core.getArrowGeometry({ x: 100.5, y: 20 }, boxWidth, boxHeight, 18),
+    null
+  );
+
   assert.deepEqual(core.getStrokeAppearance("marker"), {
     marker: true,
     opacity: 0.4
@@ -252,6 +306,39 @@ async function run() {
   // クロップボックスの原点(20,30)を足した座標が、ひと続きのパスとして並ぶ。
   const markerPath = streams.match(/40 -230 m\s+320 -235 l\s+S/);
   assert.ok(markerPath, "蛍光ペンが1本のパスとして描かれていること");
+
+  // 矢じりは塗りつぶしの多角形として書き込む。保存後の文書へ描き足すと
+  // pdf-lib が別の内容ストリームを作るため、確認用に新しい文書を使う。
+  const headDocument = await PDFLib.PDFDocument.create();
+  core.applyPageAnnotations(
+    headDocument.addPage([200, 200]),
+    [
+      {
+        type: "polygon",
+        points: [
+          { x: 100, y: 100 },
+          { x: 120, y: 90 },
+          { x: 120, y: 110 }
+        ],
+        color: "#e0245e"
+      }
+    ],
+    { x: 0, y: 0 }
+  );
+  const headBytes = await headDocument.save({ useObjectStreams: false });
+  const headStreams = [...Buffer.from(headBytes)
+    .toString("latin1")
+    .matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)]
+    .map((match) => {
+      try {
+        return zlib.inflateSync(Buffer.from(match[1], "latin1")).toString("latin1");
+      } catch {
+        return "";
+      }
+    })
+    .join("\n");
+  // 閉じたパスを塗る（f）。線として描く（S）のではない。
+  assert.match(headStreams, /100 -100 m\s+120 -90 l\s+120 -110 l\s+h\s+f/);
 
   assert.throws(() => core.applyPageAnnotations(null, []), TypeError);
 

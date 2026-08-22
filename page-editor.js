@@ -74,6 +74,42 @@ function paintText(context, annotation, layout) {
   });
 }
 
+// テキストの枠を基準にした局所座標を、画面の座標へ移す。
+function localToDisplay(annotation, localX, localY, box, rotation) {
+  const anchor = core.toDisplayPoint(
+    annotation.x,
+    annotation.y,
+    box.width,
+    box.height,
+    rotation
+  );
+  const angle = toRadians(rotation - annotation.rotation);
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return {
+    x: anchor.x + localX * cos - localY * sin,
+    y: anchor.y + localX * sin + localY * cos
+  };
+}
+
+// localToDisplay の逆変換。
+function displayToLocal(annotation, point, box, rotation) {
+  const anchor = core.toDisplayPoint(
+    annotation.x,
+    annotation.y,
+    box.width,
+    box.height,
+    rotation
+  );
+  const angle = toRadians(rotation - annotation.rotation);
+  const deltaX = point.x - anchor.x;
+  const deltaY = point.y - anchor.y;
+  return {
+    x: deltaX * Math.cos(angle) + deltaY * Math.sin(angle),
+    y: -deltaX * Math.sin(angle) + deltaY * Math.cos(angle)
+  };
+}
+
 function toDisplayPoints(points, box, rotation) {
   return points.map((point) =>
     core.toDisplayPoint(point.x, point.y, box.width, box.height, rotation)
@@ -125,12 +161,58 @@ export function drawAnnotations(context, annotations, box, rotation, options = {
       context.save();
       context.translate(anchor.x, anchor.y);
       context.rotate(toRadians(rotation - annotation.rotation));
+
+      // 矢印を付けたテキストは枠で囲む。矢印の根本を留める線が要るのと、
+      // 指し示す対象と取り違えないようにするため。
+      if (annotation.arrow) {
+        context.save();
+        context.strokeStyle = annotation.color;
+        context.lineWidth = core.getCalloutLineWidth(layout.fontSize);
+        context.strokeRect(0, 0, layout.width, layout.height);
+        const geometry = core.getArrowGeometry(
+          annotation.arrow,
+          layout.width,
+          layout.height,
+          layout.fontSize
+        );
+        if (geometry) {
+          context.fillStyle = annotation.color;
+          context.lineWidth = geometry.thickness;
+          context.beginPath();
+          context.moveTo(geometry.tail.x, geometry.tail.y);
+          context.lineTo(geometry.lineEnd.x, geometry.lineEnd.y);
+          context.stroke();
+          context.beginPath();
+          geometry.head.forEach((point, index) => {
+            if (index === 0) {
+              context.moveTo(point.x, point.y);
+            } else {
+              context.lineTo(point.x, point.y);
+            }
+          });
+          context.closePath();
+          context.fill();
+        }
+        context.restore();
+      }
+
       paintText(context, annotation, layout);
       if (selected) {
+        context.save();
         context.strokeStyle = "rgba(86, 84, 214, 0.9)";
         context.lineWidth = 1.5;
         context.setLineDash([6, 4]);
         context.strokeRect(0, 0, layout.width, layout.height);
+        // 先端はつまんで動かせる。掴める場所だと分かるよう丸で示す。
+        if (annotation.arrow) {
+          context.setLineDash([]);
+          context.fillStyle = "#fff";
+          context.beginPath();
+          context.arc(annotation.arrow.x, annotation.arrow.y, 5, 0, Math.PI * 2);
+          context.fill();
+          context.stroke();
+        }
+        context.restore();
       }
       context.restore();
       return;
@@ -288,6 +370,7 @@ export function createPageEditor(options) {
     renderTask: null,
     drawing: null,
     dragging: null,
+    arrowDrag: null,
     panning: null,
     editing: null,
     selectedId: null,
@@ -494,6 +577,9 @@ export function createPageEditor(options) {
     if (editor.tool === "pen") {
       return "ドラッグすると、なぞった通りに線を描きます。";
     }
+    if (editor.tool === "arrow") {
+      return "テキストの上からドラッグすると、離した位置を指す矢印を付けます。根本は枠線に留まり、テキストを動かすと一緒に動きます。枠の中で離すと矢印を外します。";
+    }
     if (editor.tool === "marker") {
       return "ドラッグすると、なぞった部分を半透明の色で塗ります。下の文字は消えません。";
     }
@@ -501,7 +587,7 @@ export function createPageEditor(options) {
       const name = editor.tool === "marker-line" ? "半透明の直線" : "直線";
       return `ドラッグした始点と終点を結ぶ${name}を描きます。ほぼ水平・垂直なら、始点をそのままに水平・垂直へ揃えます。`;
     }
-    return "書き込みをクリックで選択し、ドラッグで移動できます。文字はダブルクリックで編集、Deleteキーで削除します。";
+    return "書き込みをクリックで選択し、ドラッグで移動できます。文字はダブルクリックで編集、Deleteキーで削除します。矢印の先端は白い丸をつまんで動かせます。";
   }
 
   function updateNavigation() {
@@ -578,25 +664,41 @@ export function createPageEditor(options) {
       const annotation = list[index];
       if (annotation.type === "text") {
         const layout = layoutText(annotation);
-        const anchor = core.toDisplayPoint(
-          annotation.x,
-          annotation.y,
-          editor.box.width,
-          editor.box.height,
-          editor.rotation
-        );
-        const angle = toRadians(editor.rotation - annotation.rotation);
-        const dx = point.x - anchor.x;
-        const dy = point.y - anchor.y;
-        const localX = dx * Math.cos(angle) + dy * Math.sin(angle);
-        const localY = -dx * Math.sin(angle) + dy * Math.cos(angle);
+        const local = displayToLocal(annotation, point, editor.box, editor.rotation);
+        // 先端のつまみは枠より先に見る。枠と重なっていても掴めるように。
+        if (annotation.arrow) {
+          const tip = localToDisplay(
+            annotation,
+            annotation.arrow.x,
+            annotation.arrow.y,
+            editor.box,
+            editor.rotation
+          );
+          if (Math.hypot(point.x - tip.x, point.y - tip.y) <= 9) {
+            return { annotation, part: "arrow" };
+          }
+        }
         if (
-          localX >= 0 &&
-          localX <= layout.width &&
-          localY >= 0 &&
-          localY <= layout.height
+          local.x >= 0 &&
+          local.x <= layout.width &&
+          local.y >= 0 &&
+          local.y <= layout.height
         ) {
-          return annotation;
+          return { annotation, part: "body" };
+        }
+        // 矢印の線をクリックしても、そのテキストを選べるようにする。
+        const geometry = core.getArrowGeometry(
+          annotation.arrow,
+          layout.width,
+          layout.height,
+          layout.fontSize
+        );
+        if (
+          geometry &&
+          distanceToSegment(local, geometry.tail, geometry.tip) <=
+            Math.max(geometry.thickness / 2 + 4, 7)
+        ) {
+          return { annotation, part: "body" };
         }
         continue;
       }
@@ -604,17 +706,27 @@ export function createPageEditor(options) {
       const tolerance = Math.max((Number(annotation.thickness) || 1) / 2 + 4, 7);
       if (points.length === 1) {
         if (Math.hypot(point.x - points[0].x, point.y - points[0].y) <= tolerance) {
-          return annotation;
+          return { annotation, part: "body" };
         }
         continue;
       }
       for (let step = 1; step < points.length; step += 1) {
         if (distanceToSegment(point, points[step - 1], points[step]) <= tolerance) {
-          return annotation;
+          return { annotation, part: "body" };
         }
       }
     }
     return null;
+  }
+
+  function findText(point) {
+    const hit = hitTest(point);
+    return hit && hit.annotation.type === "text" ? hit.annotation : null;
+  }
+
+  // 矢印の先端は、テキストの枠を基準にした局所座標で持つ。
+  function arrowTipFromPoint(annotation, point) {
+    return displayToLocal(annotation, point, editor.box, editor.rotation);
   }
 
   function positionTextInput() {
@@ -756,16 +868,32 @@ export function createPageEditor(options) {
     commitTextEditing();
     if (editor.tool === "select") {
       const hit = hitTest(point);
-      editor.selectedId = hit ? hit.id : null;
+      editor.selectedId = hit ? hit.annotation.id : null;
       if (hit) {
         editor.dragging = {
-          id: hit.id,
-          origin: structuredClone(hit),
+          id: hit.annotation.id,
+          part: hit.part,
+          origin: structuredClone(hit.annotation),
           start: point,
           moved: false
         };
         dom.overlay.setPointerCapture(event.pointerId);
       }
+      drawOverlay();
+      updateToolbar();
+      return;
+    }
+
+    // 矢印はテキストに紐づくため、テキストの上から引き始める。
+    if (editor.tool === "arrow") {
+      const target = findText(point);
+      if (!target) {
+        setStatus("矢印を付けたいテキストの上からドラッグしてください。", "error");
+        return;
+      }
+      editor.selectedId = target.id;
+      editor.arrowDrag = { id: target.id, moved: false };
+      dom.overlay.setPointerCapture(event.pointerId);
       drawOverlay();
       updateToolbar();
       return;
@@ -788,6 +916,23 @@ export function createPageEditor(options) {
   }
 
   function onPointerMove(event) {
+    if (editor.arrowDrag) {
+      const target = annotations().find((item) => item.id === editor.arrowDrag.id);
+      if (!target) {
+        return;
+      }
+      if (!editor.arrowDrag.moved) {
+        editor.arrowDrag.moved = true;
+        pushHistory();
+      }
+      replaceAnnotation(target.id, {
+        ...target,
+        arrow: arrowTipFromPoint(target, pointerPosition(event))
+      });
+      drawOverlay();
+      return;
+    }
+
     if (editor.dragging) {
       const point = pointerPosition(event);
       const from = toUser(editor.dragging.start);
@@ -800,16 +945,21 @@ export function createPageEditor(options) {
           pushHistory();
         }
         const origin = editor.dragging.origin;
-        const moved =
-          origin.type === "text"
-            ? { ...origin, x: origin.x + deltaX, y: origin.y + deltaY }
-            : {
-                ...origin,
-                points: origin.points.map((item) => ({
-                  x: item.x + deltaX,
-                  y: item.y + deltaY
-                }))
-              };
+        let moved;
+        if (editor.dragging.part === "arrow") {
+          // 先端だけを動かす。根本は枠線の上で自動的に付いてくる。
+          moved = { ...origin, arrow: arrowTipFromPoint(origin, point) };
+        } else if (origin.type === "text") {
+          moved = { ...origin, x: origin.x + deltaX, y: origin.y + deltaY };
+        } else {
+          moved = {
+            ...origin,
+            points: origin.points.map((item) => ({
+              x: item.x + deltaX,
+              y: item.y + deltaY
+            }))
+          };
+        }
         replaceAnnotation(origin.id, moved);
         drawOverlay();
       }
@@ -840,9 +990,39 @@ export function createPageEditor(options) {
     if (dom.overlay.hasPointerCapture?.(event.pointerId)) {
       dom.overlay.releasePointerCapture(event.pointerId);
     }
+    if (editor.arrowDrag) {
+      const target = annotations().find((item) => item.id === editor.arrowDrag.id);
+      const moved = editor.arrowDrag.moved;
+      editor.arrowDrag = null;
+      if (target && moved) {
+        const layout = layoutText(target);
+        // 枠の中で離したときは、矢印を消したいときとみなす。
+        const inside = !core.getArrowAnchor(
+          layout.width,
+          layout.height,
+          target.arrow.x,
+          target.arrow.y
+        );
+        if (inside) {
+          const { arrow, ...withoutArrow } = target;
+          replaceAnnotation(target.id, withoutArrow);
+          setStatus("矢印を外しました。");
+        } else {
+          setStatus("テキストに矢印を付けました。先端はドラッグで動かせます。");
+        }
+      }
+      drawOverlay();
+      updateToolbar();
+      return;
+    }
+
     if (editor.dragging) {
       if (editor.dragging.moved) {
-        setStatus("書き込みを移動しました。");
+        setStatus(
+          editor.dragging.part === "arrow"
+            ? "矢印の先端を動かしました。"
+            : "書き込みを移動しました。"
+        );
       }
       editor.dragging = null;
       updateToolbar();
@@ -923,9 +1103,9 @@ export function createPageEditor(options) {
       return;
     }
     const hit = hitTest(pointerPosition(event));
-    if (hit?.type === "text") {
+    if (hit?.annotation.type === "text" && hit.part === "body") {
       event.preventDefault();
-      startTextEditing(null, hit);
+      startTextEditing(null, hit.annotation);
     }
   }
 
@@ -935,6 +1115,7 @@ export function createPageEditor(options) {
     editor.selectedId = null;
     editor.drawing = null;
     editor.dragging = null;
+    editor.arrowDrag = null;
     editor.history = [];
     endPanning();
     cancelTextEditing();
