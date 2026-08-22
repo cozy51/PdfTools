@@ -37,7 +37,7 @@ const elements = {
   appVersion: document.querySelector("#app-version")
 };
 
-const APP_VERSION = "1.11.0";
+const APP_VERSION = "1.12.0";
 elements.appVersion.textContent = `v${APP_VERSION}`;
 
 const state = {

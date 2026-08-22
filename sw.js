@@ -5,7 +5,7 @@
  * 古いキャッシュが返り続け、利用者に新しい版が届かない。
  */
 
-const CACHE_NAME = "pdf-tools-v1.11.0";
+const CACHE_NAME = "pdf-tools-v1.12.0";
 
 const PRECACHE_URLS = [
   "./",

@@ -372,6 +372,7 @@ export function createPageEditor(options) {
     selectedId: null,
     selectedArrowId: null,
     fontSizeDragging: false,
+    colorDragging: false,
     history: []
   };
 
@@ -564,16 +565,16 @@ export function createPageEditor(options) {
   function syncToolSettings() {
     const marker = isMarkerTool(editor.tool);
     const thickness = activeThickness();
-    dom.color.value = activeColor();
+    const selectedText = selectedTextAnnotation();
+    // 既存のテキストを選んでいるときは、色も文字サイズもそのテキストの
+    // 値を映す。選んでいなければ、道具ごとの既定値を表示する。
+    dom.color.value = selectedText ? selectedText.color : activeColor();
     dom.thicknessLabel.textContent = marker ? "蛍光ペンの太さ" : "ペンの太さ";
     dom.thickness.min = marker ? "6" : "1";
     dom.thickness.max = marker ? "48" : "16";
     dom.thickness.value = String(thickness);
     dom.thicknessValue.textContent = String(thickness);
 
-    // 既存のテキストを選んでいるときは、そのテキストの文字サイズを映す。
-    // 選んでいなければ、次に置くテキストの既定値を表示する。
-    const selectedText = selectedTextAnnotation();
     const fontSize = selectedText ? selectedText.fontSize : editor.fontSize;
     dom.fontSize.value = String(fontSize);
     dom.fontSizeValue.textContent = String(fontSize);
@@ -603,7 +604,7 @@ export function createPageEditor(options) {
       const name = editor.tool === "marker-line" ? "半透明の直線" : "直線";
       return `ドラッグした始点と終点を結ぶ${name}を描きます。ほぼ水平・垂直なら、始点をそのままに水平・垂直へ揃えます。`;
     }
-    return "書き込みをクリックで選択し、ドラッグで移動できます。文字はダブルクリックで編集、Deleteキーで削除します。選んだ文字は文字サイズのつまみでその場で大きさを変えられます。矢印は先端の白い丸をつまんで動かせ、枠の中まで戻すかDeleteキーでその矢印だけ削除できます。";
+    return "書き込みをクリックで選択し、ドラッグで移動できます。文字はダブルクリックで編集、Deleteキーで削除します。選んだ文字は、色や文字サイズのつまみでその場で見た目を変えられます。矢印は先端の白い丸をつまんで動かせ、枠の中まで戻すかDeleteキーでその矢印だけ削除できます。";
   }
 
   function updateNavigation() {
@@ -797,9 +798,14 @@ export function createPageEditor(options) {
   function startTextEditing(userPoint, existing) {
     commitTextEditing();
     editor.editing = existing
-      // originalFontSize は変更の有無を判定するためだけに持つ。commit時に
-      // 取り除くので、保存される注釈には残らない。
-      ? { ...existing, isNew: false, originalFontSize: existing.fontSize }
+      // originalFontSize と originalColor は変更の有無を判定するためだけに
+      // 持つ。commit時に取り除くので、保存される注釈には残らない。
+      ? {
+          ...existing,
+          isNew: false,
+          originalFontSize: existing.fontSize,
+          originalColor: existing.color
+        }
       : {
           id: createId(),
           type: "text",
@@ -850,11 +856,15 @@ export function createPageEditor(options) {
       const { isNew, ...annotation } = editing;
       addAnnotation({ ...annotation, text });
       setStatus("テキストを挿入しました。");
-    } else if (text !== editing.text || editing.fontSize !== editing.originalFontSize) {
-      // 文字を変えていなくても、編集中に文字サイズだけ変えていることがある。
-      // そちらも見落とさないよう確認する。
+    } else if (
+      text !== editing.text ||
+      editing.fontSize !== editing.originalFontSize ||
+      editing.color !== editing.originalColor
+    ) {
+      // 文字を変えていなくても、編集中に文字サイズや色だけ変えていることが
+      // ある。そちらも見落とさないよう確認する。
       pushHistory();
-      const { isNew, originalFontSize, ...annotation } = editing;
+      const { isNew, originalFontSize, originalColor, ...annotation } = editing;
       replaceAnnotation(editing.id, { ...annotation, text });
       setStatus("テキストを更新しました。");
     }
@@ -1333,10 +1343,39 @@ export function createPageEditor(options) {
     button.addEventListener("click", () => setTool(button.dataset.tool));
   });
   dom.color.addEventListener("input", () => {
+    const value = dom.color.value;
+
+    // 入力中のテキストがあれば、それを最優先で変える。
+    if (editor.editing) {
+      editor.editing.color = value;
+      positionTextInput();
+      return;
+    }
+
+    // 入力中でなくても、既存のテキストを選んでいればその場で変えられる
+    // ようにする。文字サイズと同じく、ひとつの操作につき一度だけ履歴へ積む。
+    const selectedText = selectedTextAnnotation();
+    if (selectedText) {
+      if (!editor.colorDragging) {
+        editor.colorDragging = true;
+        pushHistory();
+      }
+      replaceAnnotation(selectedText.id, { ...selectedText, color: value });
+      drawOverlay();
+      return;
+    }
+
+    // どちらでもなければ、道具ごとの既定値として覚えておく。
     if (isMarkerTool(editor.tool)) {
-      editor.markerColor = dom.color.value;
+      editor.markerColor = value;
     } else {
-      editor.penColor = dom.color.value;
+      editor.penColor = value;
+    }
+  });
+  dom.color.addEventListener("change", () => {
+    if (editor.colorDragging) {
+      editor.colorDragging = false;
+      setStatus("色を変更しました。");
     }
   });
   dom.thickness.addEventListener("input", () => {
