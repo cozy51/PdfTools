@@ -66,33 +66,21 @@ export function layoutText(annotation) {
 
 function paintText(context, annotation, layout) {
   context.font = `${layout.fontSize}px ${ANNOTATION_FONT}`;
-  context.textBaseline = "top";
+  // 行の高さには文字より広い余裕がある。上端に合わせて置くと、その余裕が
+  // すべて下に溜まって枠の上下が不揃いになるため、行の中央に置く。
+  context.textBaseline = "middle";
   context.textAlign = "left";
   context.fillStyle = annotation.color;
   layout.lines.forEach((line, index) => {
-    context.fillText(line, layout.padding, layout.padding + index * layout.lineHeight);
+    context.fillText(
+      line,
+      layout.padding,
+      layout.padding + (index + 0.5) * layout.lineHeight
+    );
   });
 }
 
-// テキストの枠を基準にした局所座標を、画面の座標へ移す。
-function localToDisplay(annotation, localX, localY, box, rotation) {
-  const anchor = core.toDisplayPoint(
-    annotation.x,
-    annotation.y,
-    box.width,
-    box.height,
-    rotation
-  );
-  const angle = toRadians(rotation - annotation.rotation);
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
-  return {
-    x: anchor.x + localX * cos - localY * sin,
-    y: anchor.y + localX * sin + localY * cos
-  };
-}
-
-// localToDisplay の逆変換。
+// 画面の座標を、テキストの枠を基準にした局所座標へ移す。
 function displayToLocal(annotation, point, box, rotation) {
   const anchor = core.toDisplayPoint(
     annotation.x,
@@ -169,19 +157,16 @@ export function drawAnnotations(context, annotations, box, rotation, options = {
         context.strokeStyle = annotation.color;
         context.lineWidth = core.getCalloutLineWidth(layout.fontSize);
         context.strokeRect(0, 0, layout.width, layout.height);
-        const geometry = core.getArrowGeometry(
-          annotation.arrow,
-          layout.width,
-          layout.height,
-          layout.fontSize
-        );
+        const geometry = core.getArrowGeometry(annotation, layout.width, layout.height);
         if (geometry) {
-          context.fillStyle = annotation.color;
           context.lineWidth = geometry.thickness;
+          context.lineCap = "round";
+          context.lineJoin = "round";
           context.beginPath();
           context.moveTo(geometry.tail.x, geometry.tail.y);
-          context.lineTo(geometry.lineEnd.x, geometry.lineEnd.y);
+          context.lineTo(geometry.tip.x, geometry.tip.y);
           context.stroke();
+          // 矢じりは塗らずに線で描く。
           context.beginPath();
           geometry.head.forEach((point, index) => {
             if (index === 0) {
@@ -190,8 +175,7 @@ export function drawAnnotations(context, annotations, box, rotation, options = {
               context.lineTo(point.x, point.y);
             }
           });
-          context.closePath();
-          context.fill();
+          context.stroke();
         }
         context.restore();
       }
@@ -204,11 +188,12 @@ export function drawAnnotations(context, annotations, box, rotation, options = {
         context.setLineDash([6, 4]);
         context.strokeRect(0, 0, layout.width, layout.height);
         // 先端はつまんで動かせる。掴める場所だと分かるよう丸で示す。
-        if (annotation.arrow) {
+        const tip = core.getArrowGeometry(annotation, layout.width, layout.height)?.tip;
+        if (tip) {
           context.setLineDash([]);
           context.fillStyle = "#fff";
           context.beginPath();
-          context.arc(annotation.arrow.x, annotation.arrow.y, 5, 0, Math.PI * 2);
+          context.arc(tip.x, tip.y, 5, 0, Math.PI * 2);
           context.fill();
           context.stroke();
         }
@@ -350,7 +335,8 @@ export function createPageEditor(options) {
     mode: "view",
     tool: "pen",
     // ペンと蛍光ペンは用途が違うため、色と太さをそれぞれ覚えておく。
-    penColor: "#e0245e",
+    // 赤は指摘を受ける側にきつい印象を与えやすいため、既定は青にする。
+    penColor: "#1d4ed8",
     penThickness: 3,
     markerColor: "#ffe14d",
     markerThickness: 16,
@@ -667,11 +653,11 @@ export function createPageEditor(options) {
         const local = displayToLocal(annotation, point, editor.box, editor.rotation);
         // 先端のつまみは枠より先に見る。枠と重なっていても掴めるように。
         if (annotation.arrow) {
-          const tip = localToDisplay(
-            annotation,
+          const tip = core.toDisplayPoint(
             annotation.arrow.x,
             annotation.arrow.y,
-            editor.box,
+            editor.box.width,
+            editor.box.height,
             editor.rotation
           );
           if (Math.hypot(point.x - tip.x, point.y - tip.y) <= 9) {
@@ -687,12 +673,7 @@ export function createPageEditor(options) {
           return { annotation, part: "body" };
         }
         // 矢印の線をクリックしても、そのテキストを選べるようにする。
-        const geometry = core.getArrowGeometry(
-          annotation.arrow,
-          layout.width,
-          layout.height,
-          layout.fontSize
-        );
+        const geometry = core.getArrowGeometry(annotation, layout.width, layout.height);
         if (
           geometry &&
           distanceToSegment(local, geometry.tail, geometry.tip) <=
@@ -724,9 +705,10 @@ export function createPageEditor(options) {
     return hit && hit.annotation.type === "text" ? hit.annotation : null;
   }
 
-  // 矢印の先端は、テキストの枠を基準にした局所座標で持つ。
-  function arrowTipFromPoint(annotation, point) {
-    return displayToLocal(annotation, point, editor.box, editor.rotation);
+  // 先端はページ座標で持つ。指し示す位置に意味があるため、テキストを
+  // 動かしても同じ場所へ留まる必要がある。
+  function arrowTipFromPoint(point) {
+    return toUser(point);
   }
 
   function positionTextInput() {
@@ -927,7 +909,7 @@ export function createPageEditor(options) {
       }
       replaceAnnotation(target.id, {
         ...target,
-        arrow: arrowTipFromPoint(target, pointerPosition(event))
+        arrow: arrowTipFromPoint(pointerPosition(event))
       });
       drawOverlay();
       return;
@@ -948,7 +930,7 @@ export function createPageEditor(options) {
         let moved;
         if (editor.dragging.part === "arrow") {
           // 先端だけを動かす。根本は枠線の上で自動的に付いてくる。
-          moved = { ...origin, arrow: arrowTipFromPoint(origin, point) };
+          moved = { ...origin, arrow: arrowTipFromPoint(point) };
         } else if (origin.type === "text") {
           moved = { ...origin, x: origin.x + deltaX, y: origin.y + deltaY };
         } else {
@@ -997,12 +979,7 @@ export function createPageEditor(options) {
       if (target && moved) {
         const layout = layoutText(target);
         // 枠の中で離したときは、矢印を消したいときとみなす。
-        const inside = !core.getArrowAnchor(
-          layout.width,
-          layout.height,
-          target.arrow.x,
-          target.arrow.y
-        );
+        const inside = !core.getArrowGeometry(target, layout.width, layout.height);
         if (inside) {
           const { arrow, ...withoutArrow } = target;
           replaceAnnotation(target.id, withoutArrow);
