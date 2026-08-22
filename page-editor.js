@@ -1514,6 +1514,11 @@ export function createPageEditor(options) {
       event.preventDefault();
       removeSelected();
     }
+    // Windowsとの合わせでCtrl、macOSではCommandでも同じ操作にする。
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "z") {
+      event.preventDefault();
+      undo();
+    }
   });
 
   let resizeTimer = 0;
