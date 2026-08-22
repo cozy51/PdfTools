@@ -218,14 +218,10 @@ async function run() {
   assert.equal(core.getArrowAnchor(boxWidth, boxHeight, 50, 20), null);
 
   // 枠の左上がページの (100, 500) にあり、先端が真右のページ (500, 480)。
-  const arrowText = {
-    x: 100,
-    y: 500,
-    rotation: 0,
-    fontSize: 18,
-    arrow: { x: 500, y: 480 }
-  };
-  const arrow = core.getArrowGeometry(arrowText, boxWidth, boxHeight);
+  // 矢印自体はテキストとは別に {id, x, y} で持ち、複数付けられる。
+  const arrowText = { x: 100, y: 500, rotation: 0, fontSize: 18 };
+  const firstArrow = { id: "a1", x: 500, y: 480 };
+  const arrow = core.getArrowGeometry(arrowText, firstArrow, boxWidth, boxHeight);
   assert.deepEqual(arrow.tail, { x: 100, y: 20 });
   assert.deepEqual(arrow.tip, { x: 400, y: 20 });
   // 矢じりは「く」の字の折れ線。真ん中が先端で、左右へ開く。
@@ -234,28 +230,35 @@ async function run() {
   assert.ok(arrow.head[0].x < arrow.tip.x && arrow.head[2].x < arrow.tip.x);
   assert.ok(Math.abs(arrow.head[0].y - arrow.head[2].y) > 1);
 
+  // 同じテキストに、別の場所を指す2本目の矢印も持てる。それぞれ独立して
+  // 根本の位置が決まる。
+  const secondArrow = { id: "a2", x: 130, y: 300 };
+  const secondGeometry = core.getArrowGeometry(arrowText, secondArrow, boxWidth, boxHeight);
+  assert.ok(Math.abs(secondGeometry.tail.y - boxHeight) < 1e-9);
+  assert.notDeepEqual(secondGeometry.tail, arrow.tail);
+
   // テキストを動かしても、先端はページ上の同じ位置に留まる。根本だけが
   // 枠線の上を移動する。
   const movedText = { ...arrowText, x: 150, y: 560 };
-  const movedArrow = core.getArrowGeometry(movedText, boxWidth, boxHeight);
+  const movedArrow = core.getArrowGeometry(movedText, firstArrow, boxWidth, boxHeight);
   assert.deepEqual(
     core.toPagePoint(movedText, movedArrow.tip.x, movedArrow.tip.y),
-    arrowText.arrow
+    { x: firstArrow.x, y: firstArrow.y }
   );
   // 根本は枠線の上に載ったまま、位置だけがずれる。
   assert.notDeepEqual(movedArrow.tail, arrow.tail);
   assert.ok(Math.abs(movedArrow.tail.x - boxWidth) < 1e-9);
   assert.ok(movedArrow.tail.y > 20 && movedArrow.tail.y <= boxHeight);
 
-  assert.equal(core.getArrowGeometry({ ...arrowText, arrow: null }, boxWidth, boxHeight), null);
+  assert.equal(core.getArrowGeometry(arrowText, null, boxWidth, boxHeight), null);
   // 先端が枠の中にあるときは描かない。
   assert.equal(
-    core.getArrowGeometry({ ...arrowText, arrow: { x: 160, y: 475 } }, boxWidth, boxHeight),
+    core.getArrowGeometry(arrowText, { x: 160, y: 475 }, boxWidth, boxHeight),
     null
   );
   // 枠すれすれで、線が引けないほど短いときも描かない。
   assert.equal(
-    core.getArrowGeometry({ ...arrowText, arrow: { x: 200.5, y: 480 } }, boxWidth, boxHeight),
+    core.getArrowGeometry(arrowText, { x: 200.5, y: 480 }, boxWidth, boxHeight),
     null
   );
 

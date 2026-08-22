@@ -270,8 +270,9 @@
 
   // 矢印の形。先端はページ座標で持っているので、ここで枠を基準にした局所座標
   // へ移してから組み立てる。返す座標もすべて局所座標。
-  function getArrowGeometry(annotation, boxWidth, boxHeight) {
-    const arrow = annotation && annotation.arrow;
+  // ひとつのテキストに複数の矢印を付けられるよう、対象の矢印（{x, y}）を
+  // 呼び出し側が指定する。テキスト全体からは読み取らない。
+  function getArrowGeometry(annotation, arrow, boxWidth, boxHeight) {
     if (!arrow || !Number.isFinite(arrow.x) || !Number.isFinite(arrow.y)) {
       return null;
     }
