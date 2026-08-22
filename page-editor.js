@@ -595,7 +595,7 @@ export function createPageEditor(options) {
       return "ドラッグすると、なぞった通りに線を描きます。";
     }
     if (editor.tool === "arrow") {
-      return "テキストの上からドラッグすると、離した位置を指す矢印を追加します。同じテキストから何本でも追加できます。根本は枠線に留まり、テキストを動かしても先端の位置はそのままです。";
+      return "テキストの上からドラッグすると、離した位置を指す矢印を追加します。同じテキストから何本でも追加できます。既存の矢印の先端や線の上から始めると、新しく作らずその矢印を動かします。根本は枠線に留まり、テキストを動かしても先端の位置はそのままです。";
     }
     if (editor.tool === "marker") {
       return "ドラッグすると、なぞった部分を半透明の色で塗ります。下の文字は消えません。";
@@ -958,8 +958,26 @@ export function createPageEditor(options) {
     }
 
     // 矢印はテキストに紐づくため、テキストの上から引き始める。既存の矢印の
-    // 上から始めても、それをつまむのではなく常に新しい矢印を作る。
+    // 先端や線のすぐ上から始めたときは、新しく作らずそれを動かす。それ以外の
+    // 場所（テキスト本体の上）から始めたときだけ、新しい矢印を追加する。
     if (editor.tool === "arrow") {
+      const hit = hitTest(point);
+      if (hit && hit.annotation.type === "text" && hit.part === "arrow") {
+        editor.selectedId = hit.annotation.id;
+        editor.selectedArrowId = hit.arrowId;
+        editor.dragging = {
+          id: hit.annotation.id,
+          part: "arrow",
+          arrowId: hit.arrowId,
+          origin: structuredClone(hit.annotation),
+          start: point,
+          moved: false
+        };
+        dom.overlay.setPointerCapture(event.pointerId);
+        drawOverlay();
+        updateToolbar();
+        return;
+      }
       const target = findText(point);
       if (!target) {
         setStatus("矢印を付けたいテキストの上からドラッグしてください。", "error");
