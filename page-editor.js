@@ -288,6 +288,7 @@ export function createPageEditor(options) {
     renderTask: null,
     drawing: null,
     dragging: null,
+    panning: null,
     editing: null,
     selectedId: null,
     history: []
@@ -872,6 +873,49 @@ export function createPageEditor(options) {
     );
   }
 
+  // 拡大しているときにスクロールバーまでカーソルを運ばずに済むよう、
+  // 右ドラッグで表示位置そのものを動かせるようにする。左ボタンは描画に
+  // 使うため、ここでは使わない。
+  function onStagePointerDown(event) {
+    if (event.button !== 2 || editor.panning) {
+      return;
+    }
+    event.preventDefault();
+    editor.panning = {
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      scrollLeft: dom.stage.scrollLeft,
+      scrollTop: dom.stage.scrollTop
+    };
+    // 取り込んでおくと、書き込み用のキャンバスの上を通っても移動が続き、
+    // 枠の外へはみ出しても離した時点で必ず終わる。
+    dom.stage.setPointerCapture(event.pointerId);
+    dom.stage.classList.add("panning");
+  }
+
+  function onStagePointerMove(event) {
+    const panning = editor.panning;
+    if (!panning || event.pointerId !== panning.pointerId) {
+      return;
+    }
+    event.preventDefault();
+    dom.stage.scrollLeft = panning.scrollLeft - (event.clientX - panning.clientX);
+    dom.stage.scrollTop = panning.scrollTop - (event.clientY - panning.clientY);
+  }
+
+  function endPanning(event) {
+    const panning = editor.panning;
+    if (!panning || (event && event.pointerId !== panning.pointerId)) {
+      return;
+    }
+    if (event && dom.stage.hasPointerCapture?.(event.pointerId)) {
+      dom.stage.releasePointerCapture(event.pointerId);
+    }
+    editor.panning = null;
+    dom.stage.classList.remove("panning");
+  }
+
   function onDoubleClick(event) {
     if (editor.mode !== "edit" || editor.tool !== "select") {
       return;
@@ -890,6 +934,7 @@ export function createPageEditor(options) {
     editor.drawing = null;
     editor.dragging = null;
     editor.history = [];
+    endPanning();
     cancelTextEditing();
 
     const context = await getPageContext(descriptor);
@@ -935,6 +980,7 @@ export function createPageEditor(options) {
       }
       editor.renderTask = null;
     }
+    endPanning();
     editor.open = false;
     editor.descriptor = null;
     editor.pdfPage = null;
@@ -1020,6 +1066,13 @@ export function createPageEditor(options) {
   dom.overlay.addEventListener("pointercancel", onPointerUp);
   dom.overlay.addEventListener("dblclick", onDoubleClick);
 
+  dom.stage.addEventListener("pointerdown", onStagePointerDown);
+  dom.stage.addEventListener("pointermove", onStagePointerMove);
+  dom.stage.addEventListener("pointerup", endPanning);
+  dom.stage.addEventListener("pointercancel", endPanning);
+  // 右ドラッグを移動に使うため、この中では右クリックのメニューを出さない。
+  dom.stage.addEventListener("contextmenu", (event) => event.preventDefault());
+
   dom.textInput.addEventListener("input", positionTextInput);
   dom.textInput.addEventListener("blur", commitTextEditing);
   dom.textInput.addEventListener("keydown", (event) => {
@@ -1037,7 +1090,7 @@ export function createPageEditor(options) {
   });
 
   dom.root.addEventListener("pointerdown", (event) => {
-    if (event.target === dom.root) {
+    if (event.target === dom.root && event.button === 0) {
       close();
     }
   });

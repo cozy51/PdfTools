@@ -1180,6 +1180,16 @@ h1 {
   pointer-events: none;
 }
 
+/* 右ドラッグで動かしている間は、どの道具を選んでいても掴んだ形にする。
+   道具ごとのカーソル指定より強い指定にするため、階層を重ねている。 */
+.page-editor-stage.panning,
+.page-editor-stage.panning .page-editor-surface,
+.page-editor-stage.panning .annotation-canvas.interactive,
+.page-editor-stage.panning .annotation-canvas.interactive[data-tool="select"],
+.page-editor-stage.panning .annotation-canvas.interactive[data-tool="text"] {
+  cursor: grabbing;
+}
+
 .annotation-canvas.interactive {
   pointer-events: auto;
   touch-action: none;
@@ -1293,4 +1303,11 @@ h1 {
   border-color: #b08900;
   color: #4a3a00;
   background: #ffe14d;
+}
+
+.zoom-hint {
+  color: #8b95a4;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
 }
