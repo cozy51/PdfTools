@@ -3,6 +3,12 @@ import {
   GlobalWorkerOptions,
   VerbosityLevel
 } from "./vendor/pdf.min.mjs";
+import {
+  createAnnotationStore,
+  createPageEditor,
+  drawAnnotations,
+  renderTextImage
+} from "./page-editor.js";
 
 GlobalWorkerOptions.workerSrc = new URL(
   "./vendor/pdf.worker.min.mjs",
@@ -31,7 +37,7 @@ const elements = {
   appVersion: document.querySelector("#app-version")
 };
 
-const APP_VERSION = "1.5.0";
+const APP_VERSION = "1.6.0";
 elements.appVersion.textContent = `v${APP_VERSION}`;
 
 const state = {
@@ -44,8 +50,12 @@ const state = {
   observer: null,
   renderTasks: new Map(),
   draggedItemId: null,
-  draggedPageKey: null
+  draggedPageKey: null,
+  annotations: createAnnotationStore(),
+  thumbnailRefreshTimers: new Map()
 };
+
+let pageEditor = null;
 
 let externalFileDragDepth = 0;
 
@@ -74,6 +84,28 @@ function resetExternalFileDrag() {
 
 function pageKey(itemId, sourceIndex) {
   return `${itemId}:${sourceIndex}`;
+}
+
+// 書き込みの位置はページ座標で持つ。原点と大きさは pdf.js が描画に使う
+// ビューボックス（クロップボックス）に合わせる必要があるため、そこから取る。
+function cachePageBox(item, sourceIndex, previewPage) {
+  const cached = item.pageBoxes.get(sourceIndex);
+  if (cached) {
+    return cached;
+  }
+  const [x0, y0, x1, y1] = previewPage.view;
+  const box = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+  item.pageBoxes.set(sourceIndex, box);
+  return box;
+}
+
+async function resolvePageBox(item, sourceIndex) {
+  const cached = item.pageBoxes.get(sourceIndex);
+  if (cached) {
+    return cached;
+  }
+  const previewPage = await item.previewDocument.getPage(sourceIndex + 1);
+  return cachePageBox(item, sourceIndex, previewPage);
 }
 
 function getPageDescriptors() {
@@ -115,7 +147,7 @@ function updateActionStates() {
   elements.chooseButton.disabled = state.busy;
   elements.addFilesButton.disabled = state.busy;
   elements.saveButton.disabled = state.busy || pageTotal === 0;
-  elements.pageGrid.querySelectorAll(".page-rotate, .page-select").forEach((button) => {
+  elements.pageGrid.querySelectorAll(".page-rotate, .page-select, .page-edit").forEach((button) => {
     button.disabled = state.busy;
   });
   elements.fileList.querySelectorAll(".file-action").forEach((button) => {
@@ -291,7 +323,21 @@ function createPageCard(descriptor) {
   angle.className = "page-angle";
   angle.hidden = pageState.rotation === 0;
   angle.textContent = `${pageState.rotation}°`;
-  preview.append(select, dragHandle, placeholder, angle);
+
+  const mark = document.createElement("span");
+  mark.className = "page-mark";
+  mark.textContent = "書き込みあり";
+  mark.hidden = !state.annotations.has(key);
+
+  const edit = document.createElement("button");
+  edit.type = "button";
+  edit.className = "page-edit";
+  edit.setAttribute("aria-label", `${globalIndex + 1}ページ目を開いて編集`);
+  edit.title = "ページを開く（ダブルクリックでも開けます）";
+  edit.textContent = "開いて編集";
+  edit.disabled = state.busy;
+
+  preview.append(select, dragHandle, placeholder, angle, mark, edit);
 
   const controls = document.createElement("div");
   controls.className = "page-controls";
@@ -348,6 +394,8 @@ async function renderThumbnail(descriptor, card) {
   const angle = card.querySelector(".page-angle");
   const select = card.querySelector(".page-select");
   const dragHandle = card.querySelector(".page-drag-handle");
+  const mark = card.querySelector(".page-mark");
+  const edit = card.querySelector(".page-edit");
   const token = `${Date.now()}-${Math.random()}`;
   let activeTask = null;
   card.dataset.renderToken = token;
@@ -394,8 +442,36 @@ async function renderThumbnail(descriptor, card) {
     state.renderTasks.set(key, activeTask);
     await activeTask.promise;
 
+    // 書き込みはPDFに保存されるまで別レイヤーで持つため、サムネイルにも
+    // 同じ変換で重ねて描く。
+    const annotations = state.annotations.get(key);
+    if (annotations.length > 0) {
+      const box = cachePageBox(item, pageModel.sourceIndex, sourcePage);
+      const displaySize = core.getDisplaySize(
+        box.width,
+        box.height,
+        pageState.rotation
+      );
+      const layerScale = displaySize.width > 0
+        ? viewport.width / displaySize.width
+        : scale;
+      context.setTransform(
+        outputScale * layerScale,
+        0,
+        0,
+        outputScale * layerScale,
+        0,
+        0
+      );
+      drawAnnotations(context, annotations, box, pageState.rotation);
+      context.setTransform(1, 0, 0, 1, 0, 0);
+    }
+    if (mark) {
+      mark.hidden = annotations.length === 0;
+    }
+
     if (card.dataset.renderToken === token && card.isConnected) {
-      preview.replaceChildren(canvas, select, dragHandle, angle);
+      preview.replaceChildren(canvas, select, dragHandle, angle, mark, edit);
       updatePageAngle(card, pageState.rotation);
     }
   } catch (error) {
@@ -407,13 +483,35 @@ async function renderThumbnail(descriptor, card) {
       const message = document.createElement("span");
       message.className = "preview-error";
       message.textContent = "このページのプレビューを表示できませんでした";
-      preview.replaceChildren(message, select, dragHandle, angle);
+      preview.replaceChildren(message, select, dragHandle, angle, mark, edit);
     }
   } finally {
     if (activeTask && state.renderTasks.get(key) === activeTask) {
       state.renderTasks.delete(key);
     }
   }
+}
+
+// 書き込みのたびに再描画すると重いので、少し待ってからまとめて更新する。
+function scheduleThumbnailRefresh(key) {
+  const timers = state.thumbnailRefreshTimers;
+  globalThis.clearTimeout(timers.get(key));
+  timers.set(
+    key,
+    globalThis.setTimeout(() => {
+      timers.delete(key);
+      const card = elements.pageGrid.querySelector(`[data-page-key="${key}"]`);
+      const descriptor = getPageDescriptors().find((page) => page.key === key);
+      if (!card || !descriptor) {
+        return;
+      }
+      const mark = card.querySelector(".page-mark");
+      if (mark) {
+        mark.hidden = !state.annotations.has(key);
+      }
+      void renderThumbnail(descriptor, card);
+    }, 400)
+  );
 }
 
 function updateSelectionToolbar() {
@@ -490,7 +588,7 @@ function renderWorkspace() {
   elements.editor.hidden = !hasFiles;
   if (!hasFiles) {
     cancelRenderWork();
-    document.title = "PDF 回転・削除・結合";
+    document.title = "PDF 回転・削除・結合・書き込み";
     elements.fileList.replaceChildren();
     elements.pageGrid.replaceChildren();
     elements.pageCount.textContent = "";
@@ -500,6 +598,7 @@ function renderWorkspace() {
   }
   renderFileList();
   renderPageCards();
+  pageEditor?.refresh();
 }
 
 async function parsePdfFile(file) {
@@ -527,6 +626,7 @@ async function parsePdfFile(file) {
     pdfDocument,
     previewDocument,
     originalPageCount: pageCount,
+    pageBoxes: new Map(),
     pages: Array.from({ length: pageCount }, (_, sourceIndex) => ({ sourceIndex }))
   };
 }
@@ -611,6 +711,7 @@ function removeFile(itemId) {
     (pageModel) => pageModel.itemId !== itemId
   );
   removed.previewDocument.destroy().catch(() => {});
+  state.annotations.removeItem(itemId);
   state.selectedPages.forEach((key) => {
     if (key.startsWith(`${itemId}:`)) {
       state.selectedPages.delete(key);
@@ -764,6 +865,36 @@ function rotatePage(itemId, sourceIndex, delta) {
   );
 }
 
+// テキストは画像として重ねる。pdf-lib の標準フォントは日本語を含む多くの
+// 文字を扱えないため、画面での見た目をそのまま持ち込める方法を選んでいる。
+async function applyAnnotationsToOutput(output) {
+  const itemMap = new Map(state.items.map((item) => [item.id, item]));
+  for (let index = 0; index < state.pageOrder.length; index += 1) {
+    const pageModel = state.pageOrder[index];
+    const key = pageKey(pageModel.itemId, pageModel.sourceIndex);
+    const annotations = state.annotations.get(key);
+    if (annotations.length === 0) {
+      continue;
+    }
+    const item = itemMap.get(pageModel.itemId);
+    const box = await resolvePageBox(item, pageModel.sourceIndex);
+    const drawItems = [];
+    for (const annotation of annotations) {
+      if (annotation.type === "text") {
+        const rendered = renderTextImage(annotation);
+        drawItems.push({
+          type: "image",
+          image: await output.embedPng(rendered.dataUrl),
+          ...core.getTextPlacement(annotation, rendered.width, rendered.height)
+        });
+      } else {
+        drawItems.push(annotation);
+      }
+    }
+    core.applyPageAnnotations(output.getPage(index), drawItems, box);
+  }
+}
+
 async function buildOutputPdf() {
   const itemMap = new Map(state.items.map((item) => [item.id, item]));
   const output = await core.mergeOrderedPdfPages(
@@ -772,6 +903,7 @@ async function buildOutputPdf() {
       sourceIndex: pageModel.sourceIndex
     }))
   );
+  await applyAnnotationsToOutput(output);
   output.setProducer("PDF Tools Web App");
   output.setCreator("PDF Tools Web App");
   return output;
@@ -821,6 +953,38 @@ async function savePdf() {
   }
 }
 
+function openPageForEditing(key) {
+  if (state.busy) {
+    return;
+  }
+  const descriptor = getPageDescriptors().find((page) => page.key === key);
+  if (descriptor) {
+    void pageEditor.openPage(descriptor);
+  }
+}
+
+async function getPageContext(descriptor) {
+  const { item, pageModel } = descriptor;
+  const previewPage = await item.previewDocument.getPage(pageModel.sourceIndex + 1);
+  const pageState = core.getPageState(
+    item.pdfDocument.getPage(pageModel.sourceIndex),
+    pageModel.sourceIndex
+  );
+  return {
+    pdfPage: previewPage,
+    rotation: pageState.rotation,
+    box: cachePageBox(item, pageModel.sourceIndex, previewPage)
+  };
+}
+
+pageEditor = createPageEditor({
+  store: state.annotations,
+  getDescriptors: getPageDescriptors,
+  getPageContext,
+  setStatus,
+  onAnnotationsChanged: scheduleThumbnailRefresh
+});
+
 elements.chooseButton.addEventListener("click", (event) => {
   event.stopPropagation();
   openFilePicker();
@@ -852,6 +1016,21 @@ elements.fileList.addEventListener("click", (event) => {
     moveFile(itemId, 1);
   } else if (button.dataset.fileAction === "remove") {
     removeFile(itemId);
+  }
+});
+
+elements.fileList.addEventListener("dblclick", (event) => {
+  const row = event.target.closest(".file-row");
+  if (!row || event.target.closest(".file-action")) {
+    return;
+  }
+  const descriptor = getPageDescriptors().find(
+    (page) => page.item.id === row.dataset.itemId
+  );
+  if (descriptor) {
+    openPageForEditing(descriptor.key);
+  } else {
+    setStatus("このPDFのページはすべて削除されています。", "error");
   }
 });
 
@@ -913,12 +1092,27 @@ elements.pageGrid.addEventListener("click", (event) => {
     );
     return;
   }
+  if (event.target.closest(".page-edit")) {
+    openPageForEditing(card.dataset.pageKey);
+    return;
+  }
   if (event.target.closest(".page-drag-handle")) {
     return;
   }
   if (event.target.closest(".preview-surface")) {
     togglePageSelection(card.dataset.pageKey);
   }
+});
+
+// ダブルクリックでページを開く。1回目と2回目のクリックで選択状態が入れ替わり、
+// 元の状態へ戻るため、選択のための処理を打ち消す必要はない。
+elements.pageGrid.addEventListener("dblclick", (event) => {
+  const card = event.target.closest(".page-card");
+  if (!card || event.target.closest(".page-rotate, .page-drag-handle, .page-select")) {
+    return;
+  }
+  event.preventDefault();
+  openPageForEditing(card.dataset.pageKey);
 });
 
 elements.pageGrid.addEventListener("dragstart", (event) => {

@@ -87,12 +87,103 @@ async function run() {
     ]
   );
 
+  // 画面座標とページ座標の往復。回転しても元の点へ戻る必要がある。
+  const pageWidth = 400;
+  const pageHeight = 600;
+  [0, 90, 180, 270].forEach((rotation) => {
+    const size = core.getDisplaySize(pageWidth, pageHeight, rotation);
+    const quarterTurn = rotation === 90 || rotation === 270;
+    assert.deepEqual(
+      [size.width, size.height],
+      quarterTurn ? [pageHeight, pageWidth] : [pageWidth, pageHeight]
+    );
+
+    [
+      [0, 0],
+      [size.width, 0],
+      [0, size.height],
+      [size.width, size.height],
+      [37.5, 129.25]
+    ].forEach(([displayX, displayY]) => {
+      const user = core.toUserPoint(displayX, displayY, pageWidth, pageHeight, rotation);
+      assert.ok(user.x >= -1e-9 && user.x <= pageWidth + 1e-9);
+      assert.ok(user.y >= -1e-9 && user.y <= pageHeight + 1e-9);
+      const display = core.toDisplayPoint(
+        user.x,
+        user.y,
+        pageWidth,
+        pageHeight,
+        rotation
+      );
+      assert.ok(Math.abs(display.x - displayX) < 1e-9);
+      assert.ok(Math.abs(display.y - displayY) < 1e-9);
+    });
+  });
+
+  // 回転していないページでは、画面の左上がページ座標の左上になる。
+  assert.deepEqual(core.toUserPoint(0, 0, pageWidth, pageHeight, 0), {
+    x: 0,
+    y: pageHeight
+  });
+  // 90度回転した表示では、画面の左上はページの左下にあたる。
+  assert.deepEqual(core.toUserPoint(0, 0, pageWidth, pageHeight, 90), { x: 0, y: 0 });
+
+  // テキストは左上を基準に持ち、書き込み時は左下を渡す必要がある。
+  const upright = core.getTextPlacement({ x: 100, y: 500, rotation: 0 }, 80, 20);
+  assert.deepEqual(
+    [upright.x, upright.y, upright.width, upright.height, upright.rotate],
+    [100, 480, 80, 20, 0]
+  );
+  const turned = core.getTextPlacement({ x: 100, y: 500, rotation: 90 }, 80, 20);
+  assert.ok(Math.abs(turned.x - 120) < 1e-9);
+  assert.ok(Math.abs(turned.y - 500) < 1e-9);
+  assert.equal(turned.rotate, 90);
+
+  assert.deepEqual(core.hexToRgb("#ff8000"), {
+    red: 1,
+    green: 128 / 255,
+    blue: 0
+  });
+
+  // クロップボックスの原点がずれたページでも、その分だけ位置をずらす。
+  const annotated = await PDFLib.PDFDocument.create();
+  const annotatedPage = annotated.addPage([400, 600]);
+  annotatedPage.setCropBox(20, 30, 360, 540);
+  assert.deepEqual(core.getPageBox(annotatedPage), {
+    x: 20,
+    y: 30,
+    width: 360,
+    height: 540
+  });
+
+  const beforeAnnotations = (await annotated.save()).length;
+  core.applyPageAnnotations(
+    annotatedPage,
+    [
+      {
+        type: "stroke",
+        points: [
+          { x: 10, y: 10 },
+          { x: 120, y: 90 },
+          { x: 200, y: 20 }
+        ],
+        thickness: 3,
+        color: "#1d4ed8"
+      },
+      { type: "stroke", points: [{ x: 40, y: 40 }], thickness: 5, color: "#e0245e" }
+    ],
+    core.getPageBox(annotatedPage)
+  );
+  assert.ok((await annotated.save()).length > beforeAnnotations);
+
+  assert.throws(() => core.applyPageAnnotations(null, []), TypeError);
+
   const outputPath = path.join(os.tmpdir(), "pdf-tools-web-app-test.pdf");
   fs.writeFileSync(outputPath, await reopened.save());
   assert.ok(fs.statSync(outputPath).size > 0);
   fs.unlinkSync(outputPath);
 
-  process.stdout.write("PDF rotation tests: OK\n");
+  process.stdout.write("PDF rotation and annotation tests: OK\n");
 }
 
 run().catch((error) => {

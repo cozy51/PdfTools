@@ -831,8 +831,10 @@ h1 {
   position: fixed;
   right: 24px;
   bottom: 22px;
-  z-index: 20;
+  z-index: 30;
   display: none;
+  /* 知らせるだけの表示なので、下にあるボタンの操作を邪魔しない。 */
+  pointer-events: none;
   max-width: min(520px, calc(100vw - 48px));
   min-height: 0;
   padding: 10px 14px;
@@ -924,4 +926,352 @@ h1 {
   .page-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* ページを開いて編集するモード */
+
+.page-mark {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  z-index: 1;
+  padding: 3px 7px;
+  border-radius: 6px;
+  color: #fff;
+  background: rgba(19, 141, 108, 0.94);
+  box-shadow: 0 2px 6px rgba(31, 42, 79, 0.2);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.page-edit {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  z-index: 2;
+  padding: 6px 12px;
+  border: 1px solid #cbd1dc;
+  border-radius: 8px;
+  color: #3c3ba9;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 2px 7px rgba(31, 42, 79, 0.15);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.page-edit:hover {
+  border-color: #5654d6;
+  color: #fff;
+  background: #5654d6;
+}
+
+.page-edit:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.page-editor-open body {
+  overflow: hidden;
+}
+
+.page-editor {
+  position: fixed;
+  z-index: 20;
+  display: flex;
+  padding: 20px;
+  align-items: center;
+  justify-content: center;
+  background: rgba(17, 24, 43, 0.62);
+  inset: 0;
+}
+
+.page-editor-panel {
+  display: flex;
+  width: min(1280px, 100%);
+  height: 100%;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 16px;
+  background: #f7f8fc;
+  box-shadow: 0 24px 60px rgba(15, 22, 43, 0.35);
+}
+
+.page-editor-header {
+  display: flex;
+  padding: 14px 18px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid #dfe4ed;
+  background: #fff;
+}
+
+.page-editor-heading h2 {
+  font-size: 17px;
+}
+
+.page-editor-heading p {
+  margin-top: 2px;
+  color: #6c7a8e;
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page-editor-header-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.mode-button {
+  height: 38px;
+  padding: 0 16px;
+  border: 1px solid #4b49c9;
+  border-radius: 9px;
+  color: #fff;
+  background: linear-gradient(135deg, #5b59dc, #4341bd);
+  box-shadow: 0 6px 14px rgba(67, 65, 189, 0.24);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.mode-button[aria-pressed="true"] {
+  border-color: #c8ccd8;
+  color: #33405a;
+  background: #eef0f6;
+  box-shadow: none;
+}
+
+.page-editor-close {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid #d9ddea;
+  border-radius: 9px;
+  color: #4a586f;
+  background: #fff;
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.page-editor-close:hover {
+  border-color: #d94a5c;
+  color: #c92b40;
+  background: #fff5f6;
+}
+
+.page-editor-toolbar {
+  display: flex;
+  padding: 10px 18px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  border-bottom: 1px solid #dfe4ed;
+  background: #fff;
+}
+
+.tool-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tool-button {
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid #d9ddea;
+  border-radius: 8px;
+  color: #33405a;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tool-button:hover:not(:disabled) {
+  border-color: #aaaef0;
+  color: #3634ae;
+  background: #f2f2ff;
+}
+
+.tool-button.active {
+  border-color: #4b49c9;
+  color: #fff;
+  background: #5654d6;
+}
+
+.tool-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tool-field {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #4a586f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tool-field input[type="color"] {
+  width: 38px;
+  height: 30px;
+  padding: 2px;
+  border: 1px solid #d9ddea;
+  border-radius: 7px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.tool-field input[type="range"] {
+  width: 96px;
+  accent-color: #5654d6;
+}
+
+.tool-field output {
+  min-width: 22px;
+  color: #33405a;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.page-editor-stage {
+  display: flex;
+  flex: 1 1 auto;
+  padding: 20px;
+  overflow: auto;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.6), rgba(233, 237, 244, 0.6)),
+    repeating-conic-gradient(#eef1f6 0 25%, #e6eaf2 0 50%) 50% / 16px 16px;
+}
+
+.page-editor-surface {
+  position: relative;
+  flex: 0 0 auto;
+  /* 拡大して枠から溢れたときに端が切れないよう、marginで中央へ寄せる。 */
+  margin: auto;
+  line-height: 0;
+  box-shadow: 0 10px 26px rgba(31, 42, 79, 0.22);
+}
+
+.page-editor-surface canvas {
+  display: block;
+}
+
+/* 背景の白はページ側だけに付ける。書き込み用のキャンバスに付けると、
+   同じ大きさで上に重なるためページの内容が隠れてしまう。 */
+#page-editor-canvas {
+  background: #fff;
+}
+
+.annotation-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.annotation-canvas.interactive {
+  pointer-events: auto;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.annotation-canvas.interactive[data-tool="select"] {
+  cursor: default;
+}
+
+.annotation-canvas.interactive[data-tool="text"] {
+  cursor: text;
+}
+
+.annotation-text-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  margin: 0;
+  border: 0;
+  outline: 2px dashed #5654d6;
+  background: rgba(255, 255, 255, 0.72);
+  box-sizing: border-box;
+  overflow: hidden;
+  resize: none;
+  white-space: pre;
+  transform-origin: 0 0;
+}
+
+.page-editor-footer {
+  display: flex;
+  padding: 12px 18px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  border-top: 1px solid #dfe4ed;
+  background: #fff;
+}
+
+.page-editor-hint {
+  flex: 1 1 260px;
+  min-width: 0;
+  color: #6c7a8e;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.page-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.zoom-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 6px;
+}
+
+.zoom-value {
+  min-width: 50px;
+  color: #33405a;
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.done-button {
+  height: 34px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  background: linear-gradient(135deg, #242f4a, #182238);
+  box-shadow: 0 6px 14px rgba(24, 34, 56, 0.2);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.done-button:hover {
+  background: linear-gradient(135deg, #303c58, #202b42);
+}
+
+/* ページ編集中は、右下に並ぶ操作ボタンへ重ならないよう左側へ寄せる。 */
+.page-editor-open .status {
+  right: auto;
+  left: 24px;
 }
