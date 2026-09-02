@@ -189,6 +189,65 @@ h1 {
   font-size: 0.95em;
 }
 
+.session-restore {
+  display: flex;
+  width: min(820px, 100%);
+  margin: 50px auto 0;
+  padding: 20px 24px;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid #d9dcf4;
+  border-radius: 16px;
+  background: #f4f4ff;
+  box-shadow: 0 12px 32px rgba(38, 48, 94, 0.06);
+}
+
+.session-restore-icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 12px;
+  color: #4b4aca;
+  background: #e4e5ff;
+}
+
+.session-restore-icon svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+
+.session-restore-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.session-restore-body strong {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 15px;
+}
+
+.session-restore-body p {
+  color: #5d6b7d;
+  font-size: 13px;
+}
+
+.session-restore-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 10px;
+}
+
+.session-restore-apply {
+  width: auto;
+  height: auto;
+  padding: 11px 22px;
+  margin-top: 0;
+}
+
 .drop-zone {
   display: flex;
   width: min(820px, 100%);

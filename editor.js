@@ -9,6 +9,14 @@ import {
   drawAnnotations,
   renderTextImage
 } from "./page-editor.js";
+import {
+  saveFileRecord,
+  deleteFileRecord,
+  loadAllFileRecords,
+  saveWorkspace,
+  loadWorkspace,
+  clearSession
+} from "./session-store.js";
 
 GlobalWorkerOptions.workerSrc = new URL(
   "./vendor/pdf.worker.min.mjs",
@@ -34,10 +42,14 @@ const elements = {
   saveButton: document.querySelector("#save-button"),
   saveLabel: document.querySelector("#save-label"),
   status: document.querySelector("#status"),
-  appVersion: document.querySelector("#app-version")
+  appVersion: document.querySelector("#app-version"),
+  sessionRestore: document.querySelector("#session-restore"),
+  sessionRestoreSummary: document.querySelector("#session-restore-summary"),
+  sessionRestoreApply: document.querySelector("#session-restore-apply"),
+  sessionRestoreDiscard: document.querySelector("#session-restore-discard")
 };
 
-const APP_VERSION = "1.12.1";
+const APP_VERSION = "1.13.0";
 elements.appVersion.textContent = `v${APP_VERSION}`;
 
 const state = {
@@ -58,6 +70,174 @@ const state = {
 let pageEditor = null;
 
 let externalFileDragDepth = 0;
+
+// 画面の再読み込みをしても編集内容が消えないよう、変更のたびにIndexedDBへ
+// 書き出す。PDF本体（回転を含む）とページ順・書き込みは別々に、変更が
+// あったときだけ保存する。連続した操作でそのつど書き込むと重くなるため、
+// 少し待ってからまとめて保存する。
+const fileSaveTimers = new Map();
+let workspaceSaveTimer = 0;
+let workspaceSavePending = false;
+let pendingRestore = null;
+
+function scheduleFileSave(item) {
+  const existing = fileSaveTimers.get(item.id);
+  if (existing) {
+    globalThis.clearTimeout(existing.timer);
+  }
+  const run = async () => {
+    fileSaveTimers.delete(item.id);
+    try {
+      const bytes = await item.pdfDocument.save();
+      await saveFileRecord({
+        id: item.id,
+        name: item.file.name,
+        size: item.file.size,
+        type: item.file.type || "application/pdf",
+        originalPageCount: item.originalPageCount,
+        bytes
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  };
+  fileSaveTimers.set(item.id, { timer: globalThis.setTimeout(run, 400), run });
+}
+
+function runWorkspaceSave() {
+  workspaceSavePending = false;
+  void saveWorkspace({
+    itemOrder: state.items.map((item) => item.id),
+    pageOrder: state.pageOrder.map((pageModel) => ({
+      itemId: pageModel.itemId,
+      sourceIndex: pageModel.sourceIndex
+    })),
+    annotations: state.annotations.toJSON(),
+    updatedAt: Date.now()
+  });
+}
+
+function scheduleWorkspaceSave() {
+  workspaceSavePending = true;
+  globalThis.clearTimeout(workspaceSaveTimer);
+  workspaceSaveTimer = globalThis.setTimeout(runWorkspaceSave, 500);
+}
+
+// タブを閉じたり切り替えたりする瞬間に、待たせている保存を今すぐ実行する。
+// 保留中のものだけ動かすので、変更がなければ何もしない。
+function flushPendingSaves() {
+  if (workspaceSavePending) {
+    globalThis.clearTimeout(workspaceSaveTimer);
+    runWorkspaceSave();
+  }
+  fileSaveTimers.forEach(({ timer, run }) => {
+    globalThis.clearTimeout(timer);
+    void run();
+  });
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    flushPendingSaves();
+  }
+});
+globalThis.addEventListener("pagehide", flushPendingSaves);
+
+function handleAnnotationsChanged(key) {
+  scheduleThumbnailRefresh(key);
+  scheduleWorkspaceSave();
+}
+
+function hideSessionRestoreBanner() {
+  elements.sessionRestore.hidden = true;
+  pendingRestore = null;
+}
+
+function showSessionRestoreBanner(records) {
+  const totalPages = records.reduce(
+    (sum, record) => sum + (record.originalPageCount || 0),
+    0
+  );
+  elements.sessionRestoreSummary.textContent =
+    records.length > 1
+      ? `${records.length}個のPDF（合計${totalPages}ページ）を編集中でした。`
+      : `「${records[0].name}」を編集中でした。`;
+  elements.sessionRestore.hidden = false;
+}
+
+async function discardPendingRestore() {
+  hideSessionRestoreBanner();
+  await clearSession();
+}
+
+async function applyPendingRestore() {
+  if (!pendingRestore) {
+    return;
+  }
+  const { records, workspace } = pendingRestore;
+  hideSessionRestoreBanner();
+  setBusy(true);
+  setStatus("前回の編集内容を復元しています…");
+  try {
+    const restoredItems = [];
+    for (const record of records) {
+      const file = new File([record.bytes], record.name, {
+        type: record.type || "application/pdf"
+      });
+      const item = await parsePdfFile(file);
+      // idを保ったままにする。ページ順や書き込みはこのidで紐づいているため。
+      item.id = record.id;
+      restoredItems.push(item);
+      const numericSuffix = Number(String(record.id).split("-").pop());
+      if (Number.isFinite(numericSuffix) && numericSuffix >= state.nextItemId) {
+        state.nextItemId = numericSuffix + 1;
+      }
+    }
+    state.items = restoredItems;
+    const itemPageCounts = new Map(
+      restoredItems.map((item) => [item.id, item.originalPageCount])
+    );
+    // 保存されていたページ順のうち、読み込めたPDFの範囲内にあるものだけ使う。
+    state.pageOrder = (workspace.pageOrder || []).filter(
+      (pageModel) =>
+        itemPageCounts.has(pageModel.itemId) &&
+        Number.isInteger(pageModel.sourceIndex) &&
+        pageModel.sourceIndex >= 0 &&
+        pageModel.sourceIndex < itemPageCounts.get(pageModel.itemId)
+    );
+    state.annotations.restore(workspace.annotations || {});
+    renderWorkspace();
+    setStatus("前回の編集内容を復元しました。");
+  } catch (error) {
+    console.error(error);
+    setStatus("前回の編集内容を復元できませんでした。", "error");
+    await clearSession();
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function checkForSavedSession() {
+  try {
+    const workspace = await loadWorkspace();
+    if (!workspace || !Array.isArray(workspace.itemOrder) || workspace.itemOrder.length === 0) {
+      return;
+    }
+    const fileRecords = await loadAllFileRecords();
+    const fileMap = new Map(fileRecords.map((record) => [record.id, record]));
+    const orderedRecords = workspace.itemOrder
+      .map((id) => fileMap.get(id))
+      .filter(Boolean);
+    if (orderedRecords.length === 0) {
+      await clearSession();
+      return;
+    }
+    pendingRestore = { records: orderedRecords, workspace };
+    showSessionRestoreBanner(orderedRecords);
+  } catch (error) {
+    console.error(error);
+  }
+}
 
 function isInternalReorderDrag() {
   return Boolean(state.draggedItemId || state.draggedPageKey);
@@ -635,6 +815,11 @@ async function loadFiles(fileList) {
   if (state.busy) {
     return;
   }
+  if (pendingRestore) {
+    // 復元するか決める前に新しいPDFを読み込み始めたら、前回の内容は
+    // 使わないものとみなして消す。
+    await discardPendingRestore();
+  }
   const requested = Array.from(fileList || []);
   const files = requested.filter((file) =>
     /\.pdf$/i.test(file.name) || file.type === "application/pdf"
@@ -661,6 +846,7 @@ async function loadFiles(fileList) {
           }))
         );
         added.push(item);
+        scheduleFileSave(item);
       } catch (error) {
         console.error(error);
         failed.push(file.name);
@@ -669,6 +855,7 @@ async function loadFiles(fileList) {
 
     renderWorkspace();
     if (added.length > 0) {
+      scheduleWorkspaceSave();
       const ignored = requested.length - files.length + failed.length;
       setStatus(
         ignored > 0
@@ -697,6 +884,7 @@ function moveFile(itemId, direction) {
   ];
   regroupPagesByFileOrder();
   renderWorkspace();
+  scheduleWorkspaceSave();
   setStatus(`PDFの結合順を変更しました。`);
 }
 
@@ -720,6 +908,15 @@ function removeFile(itemId) {
   if (state.lastDeletion?.some((entry) => entry.pageModel.itemId === itemId)) {
     state.lastDeletion = null;
   }
+  globalThis.clearTimeout(fileSaveTimers.get(itemId)?.timer);
+  fileSaveTimers.delete(itemId);
+  if (state.items.length === 0) {
+    // ファイルが1つも残っていなければ、復元するものも無いので消しておく。
+    void clearSession();
+  } else {
+    void deleteFileRecord(itemId);
+    scheduleWorkspaceSave();
+  }
   renderWorkspace();
   setStatus(`「${removed.file.name}」を結合対象から外しました。`);
 }
@@ -734,6 +931,7 @@ function reorderFileByDrop(sourceId, targetId, insertAfter) {
   state.items.splice(targetIndex + (insertAfter ? 1 : 0), 0, source);
   regroupPagesByFileOrder();
   renderWorkspace();
+  scheduleWorkspaceSave();
   setStatus("ドラッグ操作でPDFの結合順を変更しました。");
 }
 
@@ -756,6 +954,7 @@ function reorderPageByDrop(sourceKey, targetKey, insertAfter) {
   const newIndex = state.pageOrder.indexOf(source);
   const scrollTop = globalThis.scrollY;
   renderPageCards();
+  scheduleWorkspaceSave();
   requestAnimationFrame(() => globalThis.scrollTo({ top: scrollTop }));
   setStatus(`${newIndex + 1}ページ目へ移動しました。保存PDFにもこの順序を反映します。`);
 }
@@ -819,6 +1018,7 @@ function deleteSelectedPages() {
   state.lastDeletion = deleted;
   state.selectedPages.clear();
   renderWorkspace();
+  scheduleWorkspaceSave();
   setStatus(`${deleted.length}ページを削除しました。必要なら「削除を戻す」で復元できます。`);
 }
 
@@ -837,6 +1037,7 @@ function undoLastDeletion() {
   const restored = state.lastDeletion.length;
   state.lastDeletion = null;
   renderWorkspace();
+  scheduleWorkspaceSave();
   setStatus(`${restored}ページを元に戻しました。`);
 }
 
@@ -860,6 +1061,7 @@ function rotatePage(itemId, sourceIndex, delta) {
   );
   updatePageAngle(card, pageState.rotation);
   renderThumbnail(descriptor, card);
+  scheduleFileSave(item);
   setStatus(
     `${descriptor.globalIndex + 1}ページ目を${delta < 0 ? "左" : "右"}へ90°回転しました。`
   );
@@ -1033,8 +1235,16 @@ pageEditor = createPageEditor({
   getDescriptors: getPageDescriptors,
   getPageContext,
   setStatus,
-  onAnnotationsChanged: scheduleThumbnailRefresh
+  onAnnotationsChanged: handleAnnotationsChanged
 });
+
+elements.sessionRestoreApply.addEventListener("click", () => {
+  void applyPendingRestore();
+});
+elements.sessionRestoreDiscard.addEventListener("click", () => {
+  void discardPendingRestore();
+});
+void checkForSavedSession();
 
 elements.chooseButton.addEventListener("click", (event) => {
   event.stopPropagation();
