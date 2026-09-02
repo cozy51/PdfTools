@@ -49,7 +49,7 @@ const elements = {
   sessionRestoreDiscard: document.querySelector("#session-restore-discard")
 };
 
-const APP_VERSION = "1.13.0";
+const APP_VERSION = "1.13.1";
 elements.appVersion.textContent = `v${APP_VERSION}`;
 
 const state = {
