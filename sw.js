@@ -5,7 +5,7 @@
  * 古いキャッシュが返り続け、利用者に新しい版が届かない。
  */
 
-const CACHE_NAME = "pdf-tools-v1.12.3";
+const CACHE_NAME = "pdf-tools-v1.13.0";
 
 const PRECACHE_URLS = [
   "./",
@@ -14,6 +14,7 @@ const PRECACHE_URLS = [
   "./editor.js",
   "./page-editor.js",
   "./pdf-core.js",
+  "./session-store.js",
   "./app.webmanifest",
   "./vendor/pdf-lib.min.js",
   "./vendor/pdf.min.mjs",

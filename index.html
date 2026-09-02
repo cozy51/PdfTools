@@ -16,7 +16,7 @@
         <div class="brand">
           <img src="icons/icon-48.png" width="44" height="44" alt="">
           <div>
-            <h1><span>PDF Tools</span><span id="app-version" class="app-version">v1.12.2</span></h1>
+            <h1><span>PDF Tools</span><span id="app-version" class="app-version">v1.13.0</span></h1>
             <p>回転・削除・結合・テキスト挿入・ペンと蛍光ペン</p>
           </div>
         </div>
@@ -51,6 +51,22 @@
           Windows以外や手動で起動する場合は、このフォルダーで
           <code>python3 serve.py</code> を実行してください。
         </p>
+      </section>
+
+      <section id="session-restore" class="session-restore" role="alertdialog" aria-live="polite" hidden>
+        <div class="session-restore-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7Z"/>
+          </svg>
+        </div>
+        <div class="session-restore-body">
+          <strong>前回の編集内容があります</strong>
+          <p id="session-restore-summary"></p>
+        </div>
+        <div class="session-restore-actions">
+          <button id="session-restore-discard" class="secondary-button" type="button">破棄する</button>
+          <button id="session-restore-apply" class="save-button session-restore-apply" type="button">復元する</button>
+        </div>
       </section>
 
       <section id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="PDFファイルを選択">

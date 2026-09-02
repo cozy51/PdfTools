@@ -300,6 +300,23 @@ export function createAnnotationStore() {
     },
     clear() {
       pages.clear();
+    },
+    // 画面の再読み込み後も書き込みを復元できるよう、保存用に書き出す。
+    toJSON() {
+      const data = {};
+      pages.forEach((list, key) => {
+        data[key] = list;
+      });
+      return data;
+    },
+    // toJSON() で書き出した内容から復元する。既存の内容は置き換える。
+    restore(data) {
+      pages.clear();
+      Object.entries(data || {}).forEach(([key, list]) => {
+        if (Array.isArray(list) && list.length > 0) {
+          pages.set(key, list);
+        }
+      });
     }
   };
 }
