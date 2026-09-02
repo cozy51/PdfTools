@@ -241,7 +241,22 @@ h1 {
   gap: 10px;
 }
 
-.session-restore-apply {
+.session-restore-actions button {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.session-restore-actions button svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  fill: currentColor;
+}
+
+.session-restore-apply.save-button {
   width: auto;
   height: auto;
   padding: 11px 22px;
